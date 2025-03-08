@@ -1,0 +1,31 @@
+{
+  "name": "reddit-clipper-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend server for Reddit Clipper application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon --config nodemon.json server.js"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.269",
+    "@remotion/captions": "^4.0.269",
+    "@remotion/cli": "^4.0.269",
+    "@remotion/google-fonts": "^4.0.269",
+    "@remotion/motion-blur": "^4.0.269",
+    "@remotion/renderer": "^4.0.269",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "elevenlabs": "^1.52.0",
+    "express": "^4.21.2",
+    "idb": "^8.0.2",
+    "node-cache": "^5.1.2",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.85.4",
+    "remotion": "^4.0.269"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

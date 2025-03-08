@@ -1,0 +1,11 @@
+{
+  "ignore": [
+    "public/*",
+    "public/**/*"
+  ],
+  "watch": [
+    "*.js",
+    "remotion/**/*.tsx",
+    "remotion/**/*.ts"
+  ]
+} 
