@@ -196,49 +196,51 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
         });
 
         if (pitchUp) {
-            // Calculate pitch and speed factors
+            // First remove silences regardless of hook or script
+            const silenceRemovedTemp = outputPath + '.silence-removed.wav';
+            const silenceFilter = 'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak';
+            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silenceFilter}" "${silenceRemovedTemp}"`);
+            
+            // Get duration after silence removal
+            const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
+            const durationAfterSilence = parseFloat(silenceDurationStdout);
+            
+            // Calculate pitch and speed factors based on requirements
             let pitchFactor;
-            let effectiveSpeedFactor = speedFactor;
+            let tempoFactor = 1.0; // Separate tempo from pitch
             
             if (isHook) {
-                // Hook audio: use same factor for pitch and speed
+                // Hook audio: use fixed factor for pitch 
                 pitchFactor = 1.3;
-                effectiveSpeedFactor = 1.3;
+                // No separate tempo adjustment needed for hook
             } else {
                 // Script audio: calculate speed needed to match target duration
                 if (targetDuration) {
-                    // First apply silence removal to a temporary file to get actual duration
-                    const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-                    const silenceFilter = 'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak';
-                    await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silenceFilter}" "${silenceRemovedTemp}"`);
+                    // Calculate total speed factor needed to reach target duration
+                    const totalSpeedFactor = durationAfterSilence / targetDuration;
                     
-                    // Get duration after silence removal
-                    const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
-                    const durationAfterSilence = parseFloat(silenceDurationStdout);
+                    // When pitchUp is true, we want both the pitch and tempo to contribute to speed
+                    // Use the total speed factor as the pitch factor to get the chipmunk effect
+                    pitchFactor = totalSpeedFactor;
                     
-                    // Calculate speed factor based on silence-removed duration
-                    effectiveSpeedFactor = durationAfterSilence / targetDuration;
+                    // No additional tempo adjustment needed, since the pitch change will handle speed
+                    tempoFactor = 1.0;
                     
-                    // Ensure speed factor is within reasonable limits
-                    effectiveSpeedFactor = Math.max(0.5, Math.min(4.0, effectiveSpeedFactor));
-                    
-                    // Use the same factor for pitch to maintain chipmunk effect
-                    pitchFactor = effectiveSpeedFactor;
+                    // Ensure pitch factor is within reasonable limits
+                    pitchFactor = Math.max(1.0, Math.min(2.0, pitchFactor));
                     
                     console.log(`Script audio adjustments:`, {
                         originalDuration: currentDuration,
                         durationAfterSilence: durationAfterSilence,
                         targetDuration: targetDuration,
-                        speedFactor: effectiveSpeedFactor,
-                        expectedFinalDuration: durationAfterSilence / effectiveSpeedFactor
+                        pitchFactor: pitchFactor,
+                        tempoFactor: tempoFactor,
+                        expectedFinalDuration: durationAfterSilence / pitchFactor
                     });
-
-                    // Clean up temporary file
-                    await cleanupFiles([silenceRemovedTemp]);
                 } else {
                     // No target duration specified, use default speed factor
-                    effectiveSpeedFactor = speedFactor;
-                    pitchFactor = effectiveSpeedFactor;
+                    pitchFactor = speedFactor;
+                    tempoFactor = 1.0;
                 }
             }
 
@@ -249,156 +251,85 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
                 originalSampleRate: baseRate,
                 newSampleRate: newRate,
                 pitchFactor: pitchFactor,
-                speedFactor: effectiveSpeedFactor,
-                expectedDuration: currentDuration / effectiveSpeedFactor,
+                tempoFactor: tempoFactor,
+                effectiveSpeedFactor: isHook ? pitchFactor : pitchFactor * tempoFactor,
+                expectedDuration: isHook ? durationAfterSilence / pitchFactor : durationAfterSilence / (pitchFactor * tempoFactor),
                 isHook: isHook
             });
+            
+            // Prepare the filter chain
+            let filterChain;
+            
+            if (tempoFactor === 1.0) {
+                // Just apply pitch change if no additional tempo adjustment needed
+                filterChain = [
+                    `asetrate=${newRate}`,  // Adjust sample rate for pitch
+                    `aresample=${baseRate}` // Resample to original rate
+                ].join(',');
+            } else {
+                // Apply both pitch change and additional tempo adjustment
+                filterChain = [
+                    `asetrate=${newRate}`,         // Adjust sample rate for pitch
+                    `aresample=${baseRate}`,       // Resample to original rate
+                    `atempo=${tempoFactor.toFixed(4)}`  // Additional tempo adjustment
+                ].join(',');
+            }
 
-            // Build the filter chain with precise values
-            const filterChain = [
-                'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak',
-                `asetrate=${newRate}`,         // Adjust sample rate for pitch
-                `aresample=${baseRate}`,       // Resample to original rate
-                `atempo=${effectiveSpeedFactor.toFixed(4)}`  // Precise speed adjustment
-            ].join(',');
-
-            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${filterChain}" -ar ${baseRate} "${outputPath}"`);
+            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${filterChain}" -ar ${baseRate} "${outputPath}"`);
+            
+            // Clean up temporary file
+            await cleanupFiles([silenceRemovedTemp]);
             
             // Verify final duration
             const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
             const finalDuration = parseFloat(finalDurationStdout);
             
-            // Log duration accuracy
-            if (targetDuration) {
-                const durationDiff = Math.abs(finalDuration - targetDuration);
-                const accuracy = 100 - (durationDiff / targetDuration) * 100;
-                
-                console.log(`Audio processing results:`, {
-                    finalDuration: finalDuration,
-                    targetDuration: targetDuration,
-                    difference: `${durationDiff.toFixed(3)}s`,
-                    accuracy: `${accuracy.toFixed(2)}%`
-                });
-
-                // If accuracy is off by more than 2%, try one more time with adjusted speed
-                if (accuracy < 98 && !isHook) {
-                    console.log('Duration accuracy below 98%, adjusting speed factor and retrying...');
-                    
-                    // Calculate adjustment factor based on actual vs target duration
-                    const adjustedSpeedFactor = effectiveSpeedFactor * (finalDuration / targetDuration);
-                    
-                    // Build adjusted filter chain
-                    const adjustedFilterChain = [
-                        'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak',
-                        `asetrate=${newRate}`,
-                        `aresample=${baseRate}`,
-                        `atempo=${adjustedSpeedFactor.toFixed(4)}`
-                    ].join(',');
-
-                    // Try processing again with adjusted speed
-                    await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${adjustedFilterChain}" -ar ${baseRate} "${outputPath}"`);
-                    
-                    // Verify final duration after adjustment
-                    const { stdout: adjustedDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
-                    const adjustedFinalDuration = parseFloat(adjustedDurationStdout);
-                    const adjustedDiff = Math.abs(adjustedFinalDuration - targetDuration);
-                    const adjustedAccuracy = 100 - (adjustedDiff / targetDuration) * 100;
-                    
-                    console.log(`Adjusted audio processing results:`, {
-                        finalDuration: adjustedFinalDuration,
-                        targetDuration: targetDuration,
-                        difference: `${adjustedDiff.toFixed(3)}s`,
-                        accuracy: `${adjustedAccuracy.toFixed(2)}%`,
-                        adjustedSpeedFactor
-                    });
-                }
-            } else {
-                console.log(`Audio processing results:`, {
-                    finalDuration: finalDuration,
-                    targetDuration: 'none',
-                    difference: 'N/A',
-                    accuracy: 'N/A'
-                });
-            }
+            console.log('Final audio duration:', {
+                targetDuration: targetDuration,
+                actualDuration: finalDuration,
+                difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
+            });
         } else {
             // When pitch up is false, use atempo for speed change only
             let effectiveSpeedFactor = speedFactor;
             
+            // If silences need to be removed, do that first
+            const silenceRemovedTemp = outputPath + '.silence-removed.wav';
+            const silenceFilter = 'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak';
+            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silenceFilter}" "${silenceRemovedTemp}"`);
+            
+            // Get duration after silence removal
+            const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
+            const durationAfterSilence = parseFloat(silenceDurationStdout);
+            
             // If target duration is specified, calculate required speed factor
             if (targetDuration) {
-                effectiveSpeedFactor = currentDuration / targetDuration;
+                // Calculate total speed factor needed to reach target duration
+                effectiveSpeedFactor = durationAfterSilence / targetDuration;
+                
+                // Ensure speed factor is within reasonable limits
+                effectiveSpeedFactor = Math.max(0.8, Math.min(2.0, effectiveSpeedFactor));
+                
                 console.log(`Calculated speed factor to match target duration: ${effectiveSpeedFactor}`);
             }
             
-            let atempoChain = "";
-            let remainingSpeedFactor = effectiveSpeedFactor;
+            const filterChain = `atempo=${effectiveSpeedFactor.toFixed(4)}`;
             
-            while (remainingSpeedFactor > 2.0) {
-                atempoChain += "atempo=2.0,";
-                remainingSpeedFactor /= 2.0;
-            }
-            if (remainingSpeedFactor < 0.5) {
-                atempoChain += "atempo=0.5,";
-                remainingSpeedFactor *= 2.0;
-            }
-            atempoChain += `atempo=${remainingSpeedFactor}`;
+            // Apply speed adjustment to the silence-removed audio
+            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${filterChain}" "${outputPath}"`);
             
-            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak,${atempoChain}" "${outputPath}"`);
+            // Clean up temp file
+            await cleanupFiles([silenceRemovedTemp]);
             
             // Verify final duration
             const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
             const finalDuration = parseFloat(finalDurationStdout);
             
-            // Log duration accuracy
-            if (targetDuration) {
-                const durationDiff = Math.abs(finalDuration - targetDuration);
-                const accuracy = 100 - (durationDiff / targetDuration) * 100;
-                
-                console.log(`Audio processing results:`, {
-                    finalDuration: finalDuration,
-                    targetDuration: targetDuration,
-                    difference: `${durationDiff.toFixed(3)}s`,
-                    accuracy: `${accuracy.toFixed(2)}%`
-                });
-
-                // If accuracy is off by more than 2%, try one more time with adjusted speed
-                if (accuracy < 98) {
-                    console.log('Duration accuracy below 98%, adjusting speed factor and retrying...');
-                    
-                    // Calculate adjustment factor based on actual vs target duration
-                    const adjustedSpeedFactor = effectiveSpeedFactor * (finalDuration / targetDuration);
-                    
-                    // Build adjusted filter chain
-                    const adjustedFilterChain = [
-                        'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak',
-                        `atempo=${adjustedSpeedFactor.toFixed(4)}`
-                    ].join(',');
-
-                    // Try processing again with adjusted speed
-                    await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${adjustedFilterChain}" "${outputPath}"`);
-                    
-                    // Verify final duration after adjustment
-                    const { stdout: adjustedDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
-                    const adjustedFinalDuration = parseFloat(adjustedDurationStdout);
-                    const adjustedDiff = Math.abs(adjustedFinalDuration - targetDuration);
-                    const adjustedAccuracy = 100 - (adjustedDiff / targetDuration) * 100;
-                    
-                    console.log(`Adjusted audio processing results:`, {
-                        finalDuration: adjustedFinalDuration,
-                        targetDuration: targetDuration,
-                        difference: `${adjustedDiff.toFixed(3)}s`,
-                        accuracy: `${adjustedAccuracy.toFixed(2)}%`,
-                        adjustedSpeedFactor
-                    });
-                }
-            } else {
-                console.log(`Audio processing results:`, {
-                    finalDuration: finalDuration,
-                    targetDuration: 'none',
-                    difference: 'N/A',
-                    accuracy: 'N/A'
-                });
-            }
+            console.log('Final audio duration:', {
+                targetDuration: targetDuration,
+                actualDuration: finalDuration,
+                difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
+            });
         }
     } catch (error) {
         console.error('Error processing audio:', error);
@@ -802,53 +733,95 @@ async function createBackgroundVideo(seed, requiredDurationSeconds, background_v
     console.log(`Required duration: ${requiredDurationSeconds} seconds`);
     console.log(`Using background video type: ${background_video_type}`);
     
-    // Use the appropriate folder based on the background_video_type
-    const backgroundsBaseDir = path.join(__dirname, 'remotion/assets/backgrounds');
-    const backgroundsDir = path.join(backgroundsBaseDir, background_video_type);
+    // Generate a Supabase storage URL base for the background-videos bucket
+    const { data: bucketData, error: bucketError } = await supabase.storage.getBucket('background-videos');
     
-    // If the specific folder doesn't exist, fall back to the base directory
-    const useDir = fs.existsSync(backgroundsDir) ? backgroundsDir : backgroundsBaseDir;
-    console.log(`Using backgrounds directory: ${useDir}`);
-
-    // Get all mp4 files from the backgrounds directory
-    const allVideos = fs.readdirSync(useDir)
-      .filter(file => file.endsWith('.mp4'))
-      .map(file => path.join(useDir, file));
-
-    if (allVideos.length === 0) {
-      console.warn(`No background videos found in ${useDir}, falling back to base directory`);
-      // Fall back to the base directory if no videos found in the specific folder
-      const baseVideos = fs.readdirSync(backgroundsBaseDir)
-        .filter(file => file.endsWith('.mp4'))
-        .map(file => path.join(backgroundsBaseDir, file));
+    if (bucketError) {
+      console.error('Error accessing background-videos bucket:', bucketError);
+      throw bucketError;
+    }
+    
+    // List files in the specific folder within the bucket
+    const folderPath = background_video_type;
+    const { data: folderFiles, error: folderError } = await supabase.storage
+      .from('background-videos')
+      .list(folderPath);
+      
+    if (folderError) {
+      console.error(`Error listing files in folder: ${folderPath}`, folderError);
+      throw folderError;
+    }
+    
+    console.log(`Found ${folderFiles.length} files in Supabase background-videos/${folderPath}`);
+    
+    // Filter for MP4 files
+    let mp4Files = folderFiles.filter(file => file.name.endsWith('.mp4'));
+    
+    if (mp4Files.length === 0) {
+      console.warn(`No background videos found in background-videos/${folderPath}, checking root folder...`);
+      
+      // Fall back to the root directory of the bucket
+      const { data: rootFiles, error: rootError } = await supabase.storage
+        .from('background-videos')
+        .list('');
         
-      if (baseVideos.length === 0) {
-        throw new Error('No background videos found in assets directory');
+      if (rootError) {
+        console.error('Error listing files in root folder', rootError);
+        throw rootError;
       }
       
-      allVideos.push(...baseVideos);
+      mp4Files = rootFiles.filter(file => file.name.endsWith('.mp4'));
+      
+      if (mp4Files.length === 0) {
+        throw new Error('No background videos found in Supabase storage');
+      }
     }
-
+    
     // Randomly shuffle all videos
-    const shuffledVideos = [...allVideos].sort(() => Math.random() - 0.5);
+    const shuffledFiles = [...mp4Files].sort(() => Math.random() - 0.5);
     let selectedVideos = [];
     let totalDuration = 0;
     let totalFrames = 0;
+    
+    // Temporary directory to download videos for duration checking
+    const tmpDir = path.join(__dirname, 'tmp');
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true });
+    }
 
     // Select videos until we have enough duration
-    for (const video of shuffledVideos) {
+    for (const file of shuffledFiles) {
+      const filePath = `${folderPath}/${file.name}`;
+      
+      // Generate public URL for the video
+      const { data: { publicUrl } } = supabase.storage
+        .from('background-videos')
+        .getPublicUrl(filePath);
+      
+      // Download the video temporarily to check its duration
+      const tempFilePath = path.join(tmpDir, file.name);
+      
+      // Use fetch to download the file
+      const response = await fetch(publicUrl);
+      const buffer = await response.arrayBuffer();
+      fs.writeFileSync(tempFilePath, Buffer.from(buffer));
+      
+      // Get duration using ffprobe
       const { stdout: durationOutput } = await execAsync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${video}"`
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${tempFilePath}"`
       );
       const duration = parseFloat(durationOutput);
       const durationInFrames = Math.ceil(duration * 30); // Convert to frames at 30fps
       
+      // Clean up temp file
+      fs.unlinkSync(tempFilePath);
+      
       totalDuration += duration;
       totalFrames += durationInFrames;
       
-      // Create an object with video info, using the original file path
+      // Create an object with video info, using the Supabase URL
       selectedVideos.push({
-        path: `http://localhost:3003/assets/backgrounds/${background_video_type}/${path.basename(video)}`,
+        path: publicUrl,
         durationInFrames: durationInFrames,
         durationInSeconds: duration
       });
