@@ -10,23 +10,23 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     proxy: {
       '/api': {
-        target: 'http://192.168.4.37:3003',
+        target: 'http://localhost:3003',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path
       },
       '/audio': {
-        target: 'http://192.168.4.37:3003',
+        target: 'http://localhost:3003',
         changeOrigin: true,
         secure: false,
       },
       '/images': {
-        target: 'http://192.168.4.37:3003',
+        target: 'http://localhost:3003',
         changeOrigin: true,
         secure: false,
       },
       '/videos': {
-        target: 'http://192.168.4.37:3003',
+        target: 'http://localhost:3003',
         changeOrigin: true,
         secure: false,
       }

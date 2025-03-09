@@ -195,11 +195,19 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
             targetDuration: targetDuration
         });
 
+        // Define silence removal threshold and create the filter
+        const silence_threshold_db = -35;
+        const silence_filter = (
+            `silenceremove=start_periods=1:start_duration=0:`+
+            `start_threshold=${silence_threshold_db}dB:detection=peak,`+
+            `silenceremove=stop_periods=-1:stop_duration=0:`+
+            `stop_threshold=${silence_threshold_db}dB:detection=peak`
+        );
+        
         if (pitchUp) {
             // First remove silences regardless of hook or script
             const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-            const silenceFilter = 'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak';
-            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silenceFilter}" "${silenceRemovedTemp}"`);
+            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
             
             // Get duration after silence removal
             const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
@@ -295,8 +303,7 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
             
             // If silences need to be removed, do that first
             const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-            const silenceFilter = 'silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-35dB:detection=peak';
-            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silenceFilter}" "${silenceRemovedTemp}"`);
+            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
             
             // Get duration after silence removal
             const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
@@ -335,7 +342,7 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
         console.error('Error processing audio:', error);
         throw error;
     } finally {
-        // Clean up temporary files
+        // Clean up intermediate files
         await cleanupFiles([normalizedAudio]);
     }
 }
@@ -963,7 +970,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     const scriptAudioFileName = path.basename(scriptAudioPath);
     
     // Use the server's IP address instead of localhost
-    const serverAddress = '192.168.4.37:3003'; // Your machine's IP and port
+    const serverAddress = 'localhost:3003'; // Your machine's IP and port
     const hookAudioUrl = `http://${serverAddress}/audio/${hookAudioFileName}`;
     const scriptAudioUrl = `http://${serverAddress}/audio/${scriptAudioFileName}`;
     
