@@ -34,7 +34,7 @@ export function ContentInputModal({
 }: ContentInputModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[1000px] max-h-[90vh] bg-[#222222] text-white border border-white/10">
+      <DialogContent className="sm:max-w-[1000px] h-[90vh] flex flex-col bg-[#222222] text-white border border-white/10">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold">Write Your Script</DialogTitle>
           <DialogDescription className="text-muted-foreground">
@@ -44,8 +44,8 @@ export function ContentInputModal({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-6">
-          <div className="grid gap-2">
+        <div className="flex-1 flex flex-col overflow-hidden space-y-4">
+          <div className="shrink-0">
             <div className="flex justify-between items-center">
               <Label className="text-white text-base font-medium">Hook</Label>
               <p className="text-xs text-muted-foreground">{hook.trim() ? hook.trim().split(/\s+/).length : 0} words</p>
@@ -57,11 +57,11 @@ export function ContentInputModal({
               onChange={(e) => onHookChange(e.target.value)}
               className="w-full px-4 py-3 bg-[#2A2A2A] border border-[#3A3A3A] rounded-md text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
             />
-            <p className="text-xs text-muted-foreground">This will be the first thing viewers hear - make it catchy!</p>
+            <p className="text-xs text-muted-foreground mt-1">This will be the first thing viewers hear - make it catchy!</p>
           </div>
           
-          <div className="grid gap-2">
-            <div className="flex justify-between items-center">
+          <div className="flex-1 flex flex-col min-h-0 mt-4">
+            <div className="flex justify-between items-center shrink-0">
               <Label className="text-white text-base font-medium">Script</Label>
               <p className="text-xs text-muted-foreground">{script.trim() ? script.trim().split(/\s+/).length : 0} words</p>
             </div>
@@ -70,12 +70,12 @@ export function ContentInputModal({
               placeholder="Enter the main content of your video..."
               value={script}
               onChange={(e) => onScriptChange(e.target.value)}
-              className="resize-none min-h-[300px] max-h-[400px] bg-[#2A2A2A] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors"
+              className="flex-1 resize-none mt-2 bg-[#2A2A2A] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors overflow-auto"
             />
           </div>
         </div>
         
-        <div className="flex gap-3 pt-6">
+        <div className="flex gap-3 pt-4 shrink-0">
           <Button 
             variant="outline"
             onClick={onBackToOptions}

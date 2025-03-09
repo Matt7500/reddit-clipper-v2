@@ -252,7 +252,7 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
                 }
             }
 
-            // Calculate the exact sample rate needed for pitch adjustment
+            // Calculate the exact sample rate needed for pitch adjustment (like in the Python example)
             const newRate = Math.floor(baseRate * pitchFactor);
             
             console.log('Audio processing parameters:', {
@@ -265,27 +265,26 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
                 isHook: isHook
             });
             
-            // Prepare the filter chain
-            let filterChain;
+            // Build the filter chain exactly as in the Python example
+            let filterChain = [
+                // First change the sample rate to affect pitch
+                `asetrate=${newRate}`,
+                // Then resample back to original rate while preserving the pitch change
+                `aresample=${baseRate}`
+            ];
             
-            if (tempoFactor === 1.0) {
-                // Just apply pitch change if no additional tempo adjustment needed
-                filterChain = [
-                    `asetrate=${newRate}`,  // Adjust sample rate for pitch
-                    `aresample=${baseRate}` // Resample to original rate
-                ].join(',');
-            } else {
-                // Apply both pitch change and additional tempo adjustment
-                filterChain = [
-                    `asetrate=${newRate}`,         // Adjust sample rate for pitch
-                    `aresample=${baseRate}`,       // Resample to original rate
-                    `atempo=${tempoFactor.toFixed(4)}`  // Additional tempo adjustment
-                ].join(',');
+            // Add tempo adjustment if needed
+            if (tempoFactor !== 1.0) {
+                filterChain.push(`atempo=${tempoFactor.toFixed(4)}`);
             }
-
-            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${filterChain}" -ar ${baseRate} "${outputPath}"`);
             
-            // Clean up temporary file
+            // Join the filter chain with commas (like in the Python example)
+            const filterString = filterChain.join(',');
+            
+            // Apply the filter chain            
+            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -filter:a "${filterString}" -ar ${baseRate} -y "${outputPath}"`);
+            
+            // Clean up temporary files
             await cleanupFiles([silenceRemovedTemp]);
             
             // Verify final duration
@@ -320,10 +319,23 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
                 console.log(`Calculated speed factor to match target duration: ${effectiveSpeedFactor}`);
             }
             
-            const filterChain = `atempo=${effectiveSpeedFactor.toFixed(4)}`;
+            // For normal speed changing, use high quality ATEMPO
+            let atempoChain = "";
+            let remainingSpeedFactor = effectiveSpeedFactor;
+            
+            // ATEMPO filter can only handle values between 0.5 and 2.0, so chain if needed
+            while (remainingSpeedFactor > 2.0) {
+                atempoChain += "atempo=2.0,";
+                remainingSpeedFactor /= 2.0;
+            }
+            while (remainingSpeedFactor < 0.5) {
+                atempoChain += "atempo=0.5,";
+                remainingSpeedFactor *= 2.0;
+            }
+            atempoChain += `atempo=${remainingSpeedFactor.toFixed(4)}`;
             
             // Apply speed adjustment to the silence-removed audio
-            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${filterChain}" "${outputPath}"`);
+            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${atempoChain}" -y "${outputPath}"`);
             
             // Clean up temp file
             await cleanupFiles([silenceRemovedTemp]);
