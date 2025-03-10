@@ -168,7 +168,7 @@ async function getAudioSampleRate(filePath) {
 }
 
 // Function to process audio: remove silences and speed up
-async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = false, isHook = true, targetDuration = null) {
+async function processAudio(inputPath, outputPath, speedFactor = 1.3, pitchUp = false, isHook = true, targetDuration = null) {
     console.log('Processing audio with parameters:', {
         inputPath,
         outputPath,
@@ -219,7 +219,7 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
             
             if (isHook) {
                 // Hook audio: use fixed factor for pitch 
-                pitchFactor = 1.3;
+                pitchFactor = 1.4;
                 // No separate tempo adjustment needed for hook
             } else {
                 // Script audio: calculate speed needed to match target duration
@@ -746,12 +746,11 @@ async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channe
   }
 }
 
-async function createBackgroundVideo(seed, requiredDurationSeconds, background_video_type) {
+async function createBackgroundVideo(requiredDurationSeconds, background_video_type) {
   try {
     console.log('Creating background video sequence...');
     console.log(`Required duration: ${requiredDurationSeconds} seconds`);
     console.log(`Using background video type: ${background_video_type}`);
-    console.log(`Using seed: ${seed}`);
     
     // Generate a Supabase storage URL base for the background-videos bucket
     const { data: bucketData, error: bucketError } = await supabase.storage.getBucket('background-videos');
@@ -797,13 +796,10 @@ async function createBackgroundVideo(seed, requiredDurationSeconds, background_v
       }
     }
     
-    // Create a seeded random function
-    const seededRandom = createSeededRandom(seed);
-    
-    // Randomly shuffle all videos using the seeded random function
+    // Randomly shuffle all videos using Math.random()
     const shuffledFiles = [...mp4Files];
     for (let i = shuffledFiles.length - 1; i > 0; i--) {
-      const j = Math.floor(seededRandom() * (i + 1));
+      const j = Math.floor(Math.random() * (i + 1));
       [shuffledFiles[i], shuffledFiles[j]] = [shuffledFiles[j], shuffledFiles[i]];
     }
     
@@ -817,27 +813,30 @@ async function createBackgroundVideo(seed, requiredDurationSeconds, background_v
       fs.mkdirSync(tmpDir, { recursive: true });
     }
 
-    // Select videos more diversely by considering all available videos
-    // We'll use a loop counter to ensure we consider all videos before repeating
-    let loopCounter = 0;
+    // Keep track of used videos to ensure diversity
+    const usedVideos = new Set();
+    let availableVideos = [...shuffledFiles];
     
     while (totalDuration < requiredDurationSeconds) {
-      // If we've gone through all videos, reshuffle them with a different 'internal' seed
-      if (loopCounter >= shuffledFiles.length) {
-        // Reshuffle with a modified seed to get a different order
-        const newSeed = seed + '-' + loopCounter;
-        const newSeededRandom = createSeededRandom(newSeed);
+      // If we've used all videos, reset the pool
+      if (availableVideos.length === 0) {
+        availableVideos = [...shuffledFiles];
+        usedVideos.clear();
         
-        for (let i = shuffledFiles.length - 1; i > 0; i--) {
-          const j = Math.floor(newSeededRandom() * (i + 1));
-          [shuffledFiles[i], shuffledFiles[j]] = [shuffledFiles[j], shuffledFiles[i]];
+        // Reshuffle the videos
+        for (let i = availableVideos.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [availableVideos[i], availableVideos[j]] = [availableVideos[j], availableVideos[i]];
         }
-        
-        loopCounter = 0;
       }
       
-      const file = shuffledFiles[loopCounter];
-      loopCounter++;
+      // Pick a random video from available ones
+      const randomIndex = Math.floor(Math.random() * availableVideos.length);
+      const file = availableVideos[randomIndex];
+      
+      // Remove the selected video from available pool and add to used set
+      availableVideos.splice(randomIndex, 1);
+      usedVideos.add(file.name);
       
       const filePath = `${folderPath}/${file.name}`;
       
@@ -881,53 +880,13 @@ async function createBackgroundVideo(seed, requiredDurationSeconds, background_v
 
     return { 
       videos: selectedVideos, 
-      totalDurationInFrames: Math.round(totalFrames),
-      totalDuration: totalDuration
+      totalDurationInFrames: totalFrames,
+      totalDurationInSeconds: totalDuration
     };
   } catch (error) {
-    console.error('Error creating background video sequence:', error);
+    console.error('Error in createBackgroundVideo:', error);
     throw error;
   }
-}
-
-// Helper function to create a seeded random number generator
-function createSeededRandom(seed) {
-  // Simple seeded random function
-  let s = cyrb128(String(seed));
-  let rand = sfc32(s[0], s[1], s[2], s[3]);
-  return rand;
-}
-
-// Seed generation function
-function cyrb128(str) {
-  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
-  for (let i = 0, k; i < str.length; i++) {
-    k = str.charCodeAt(i);
-    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
-    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
-    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
-    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
-  }
-  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
-  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
-  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
-  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
-  return [(h1 ^ h2 ^ h3 ^ h4) >>> 0, (h2 ^ h1) >>> 0, (h3 ^ h1) >>> 0, (h4 ^ h1) >>> 0];
-}
-
-// Simple Counter (SFC32) algorithm for the random number generator
-function sfc32(a, b, c, d) {
-  return function() {
-    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
-    let t = (a + b) | 0;
-    a = b ^ b >>> 9;
-    b = c + (c << 3) | 0;
-    c = (c << 21 | c >>> 11);
-    d = d + 1 | 0;
-    t = t + d | 0;
-    c = c + t | 0;
-    return (t >>> 0) / 4294967296;
-  };
 }
 
 // Function to render hook video using Remotion
@@ -1010,8 +969,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     }) + '\n\n');
     
     // Generate background video sequence
-    const seed = Date.now();
-    const { videos, totalDurationInFrames } = await createBackgroundVideo(seed, totalDurationInSeconds, background_video_type);
+    const { videos, totalDurationInFrames } = await createBackgroundVideo(null, totalDurationInSeconds, background_video_type);
     console.log(`Background videos generated: ${videos.length} videos`);
     
     // Add background videos to cleanup list
@@ -1671,9 +1629,9 @@ Story:
 process.env.REMOTION_TIMEOUT = '600000'; // 10 minutes
 
 const PORT = process.env.PORT || 3003;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, 'localhost', () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Server accessible at http://0.0.0.0:${PORT}`);
-  console.log(`Audio files will be available at: http://0.0.0.0:${PORT}/audio/`);
-  console.log(`Images will be available at: http://0.0.0.0:${PORT}/images/`);
+  console.log(`Server accessible at http://localhost:${PORT}`);
+  console.log(`Audio files will be available at: http://localhost:${PORT}/audio/`);
+  console.log(`Images will be available at: http://localhost:${PORT}/images/`);
 }); 
