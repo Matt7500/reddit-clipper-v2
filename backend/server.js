@@ -15,6 +15,7 @@ import OpenAI from 'openai';
 
 // Initialize OpenAI client
 let openaiClient = null;
+let openRouterClient = null;
 
 const getOpenAIClient = (apiKey) => {
   try {
@@ -31,9 +32,29 @@ const getOpenAIClient = (apiKey) => {
   }
 };
 
+const getOpenRouterClient = (apiKey) => {
+  try {
+    if (!openRouterClient) {
+      if (!apiKey) {
+        throw new Error('OpenRouter API key is required');
+      }
+      openRouterClient = new OpenAI({ apiKey, baseURL: 'https://openrouter.ai/api/v1' });
+    }
+    return openRouterClient;
+  } catch (error) {
+    console.error('Error initializing OpenRouter client:', error);
+    throw error;
+  }
+};
+
 // Reset OpenAI client when API key changes
 const resetOpenAIClient = () => {
   openaiClient = null;
+};
+
+// Reset OpenRouter client when API key changes
+const resetOpenRouterClient = () => {
+  openRouterClient = null;
 };
 
 const execAsync = promisify(exec);
@@ -168,7 +189,7 @@ async function getAudioSampleRate(filePath) {
 }
 
 // Function to process audio: remove silences and speed up
-async function processAudio(inputPath, outputPath, speedFactor = 1.3, pitchUp = false, isHook = true, targetDuration = null) {
+async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp = false, isHook = true, targetDuration = null) {
     console.log('Processing audio with parameters:', {
         inputPath,
         outputPath,
@@ -374,7 +395,7 @@ async function cleanupFiles(files) {
 }
 
 // Function to transcribe audio and get word-level timestamps
-async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channelStyle = 'grouped') {
+async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channelStyle = 'grouped', openrouterApiKey = null, openrouterModel = null) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000; // 2 seconds
   
@@ -384,11 +405,16 @@ async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channe
     throw new Error('ElevenLabs API key is required for transcription');
   }
   
-  if (!openaiApiKey || openaiApiKey.trim() === '') {
-    console.warn('OpenAI API key is missing or empty - color analysis will be skipped');
-    // We'll continue without OpenAI API key, but color analysis will be skipped
-  } else {
+  const hasOpenAI = openaiApiKey && openaiApiKey.trim() !== '';
+  const hasOpenRouter = openrouterApiKey && openrouterApiKey.trim() !== '';
+  
+  if (!hasOpenAI && !hasOpenRouter) {
+    console.warn('Neither OpenAI nor OpenRouter API key is available - color analysis will be skipped');
+    // We'll continue without OpenAI/OpenRouter API key, but color analysis will be skipped
+  } else if (hasOpenAI) {
     console.log('OpenAI API key is present for color analysis');
+  } else {
+    console.log('OpenRouter API key is present for color analysis');
   }
   
   // Helper function to process transcription response
@@ -562,8 +588,8 @@ async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channe
       const processedWords = processTranscriptionResponse(directData);
       
       // Skip color analysis if OpenAI API key is missing
-      if (!openaiApiKey || openaiApiKey.trim() === '') {
-        console.warn('Skipping color analysis due to missing OpenAI API key');
+      if (!openaiApiKey && !openrouterApiKey) {
+        console.warn('Skipping color analysis due to missing API keys');
         
         // Write processed transcription to file with default colors (all white)
         // const timestamp = Date.now();
@@ -574,12 +600,11 @@ async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channe
         //   channelStyle
         // }, null, 2));
         
-        
-        console.log(`Transcribed into ${processedWords.length} words (all white due to missing OpenAI API key)`);
+        console.log(`Transcribed into ${processedWords.length} words (all white due to missing API keys)`);
         return processedWords;
       }
       
-      // Analyze text for important words using fetch to OpenAI API directly
+      // Analyze text for important words using OpenAI or OpenRouter API
       console.log('Analyzing text for word importance...');
       const systemPrompt = channelStyle === 'single' 
         ? `You are a text analyzer that identifies important words and phrases in text and assigns them colors. You must put a focus on coloring phrases rather than single words.
@@ -608,7 +633,7 @@ async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channe
             9. The JSON array should be in the format: [{"word": "word", "color": "color"}, {"word": "word", "color": "color"}]`;
 
       let colorAssignments = [];
-      let openaiSuccess = false;
+      let apiSuccess = false;
       
       // Define models to try in order of preference
       const openaiModels = ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'];
@@ -625,58 +650,85 @@ async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channe
           const currentModel = openaiModels[currentModelIndex];
           console.log(`Color analysis attempt ${colorAttempt}/${MAX_RETRIES} using model: ${currentModel}...`);
           
-          const importanceResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
-              model: currentModel,
-              messages: [
-                {
-                  role: "system",
-                  content: systemPrompt
-                },
-                {
-                  role: "user",
-                  content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
-                }
-              ],
-              temperature: 0.3
-            })
-          });
+          let importanceResponse;
+          if (hasOpenAI) {
+            importanceResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiApiKey}`
+              },
+              body: JSON.stringify({
+                model: currentModel,
+                messages: [
+                  {
+                    role: "system",
+                    content: systemPrompt
+                  },
+                  {
+                    role: "user",
+                    content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
+                  }
+                ],
+                temperature: 0.3
+              })
+            });
+          } else if (hasOpenRouter) {
+            importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openrouterApiKey}`
+              },
+              body: JSON.stringify({
+                model: openrouterModel,
+                messages: [
+                  {
+                    role: "system",
+                    content: systemPrompt
+                  },
+                  {
+                    role: "user",
+                    content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
+                  }
+                ],
+                temperature: 0.3
+              })
+            });
+          } else {
+            throw new Error('Neither OpenAI nor OpenRouter API key is available');
+          }
 
           // Log the response status
-          console.log(`OpenAI API response status: ${importanceResponse.status}`);
+          console.log(`API response status: ${importanceResponse.status}`);
           
           if (!importanceResponse.ok) {
             const errorText = await importanceResponse.text();
-            throw new Error(`OpenAI API returned status ${importanceResponse.status}: ${errorText}`);
+            throw new Error(`API returned status ${importanceResponse.status}: ${errorText}`);
           }
 
           const importanceData = await importanceResponse.json();
           
           // Log the response structure
-          console.log(`OpenAI response received with ${importanceData.choices ? importanceData.choices.length : 0} choices`);
+          console.log(`API response received with ${importanceData.choices ? importanceData.choices.length : 0} choices`);
           
           if (!importanceData || !importanceData.choices || !importanceData.choices[0] || !importanceData.choices[0].message || !importanceData.choices[0].message.content) {
-            console.error('Invalid OpenAI response structure:', JSON.stringify(importanceData));
-            throw new Error('Invalid response from OpenAI API');
+            console.error('Invalid API response structure:', JSON.stringify(importanceData));
+            throw new Error('Invalid response from API');
           }
           
           try {
             // Log the raw content before parsing
             const rawContent = importanceData.choices[0].message.content;
-            console.log(`OpenAI raw response content (first 100 chars): ${rawContent.substring(0, 100)}...`);
+            console.log(`API raw response content (first 100 chars): ${rawContent.substring(0, 100)}...`);
             
             colorAssignments = JSON.parse(rawContent);
-            openaiSuccess = true;
+            apiSuccess = true;
             console.log(`Color analysis completed successfully with ${colorAssignments.length} color assignments`);
             break;
           } catch (parseError) {
-            console.error('Failed to parse OpenAI response content:', importanceData.choices[0].message.content);
-            throw new Error(`Failed to parse OpenAI response: ${parseError.message}`);
+            console.error('Failed to parse API response content:', importanceData.choices[0].message.content);
+            throw new Error(`Failed to parse API response: ${parseError.message}`);
           }
         } catch (colorError) {
           console.error(`Color analysis attempt ${colorAttempt} failed: ${colorError.message}`);
@@ -890,7 +942,7 @@ async function createBackgroundVideo(requiredDurationSeconds, background_video_t
 }
 
 // Function to render hook video using Remotion
-async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp) {
+async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, openrouterApiKey = null, openrouterModel = null) {
   let isProcessComplete = false; // Add variable declaration
   try {
     console.log('Starting video generation process...');
@@ -924,7 +976,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     console.log('Getting word-level transcription...');
     let wordTimings;
     try {
-      wordTimings = await transcribeAudio(scriptAudioPath, elevenlabsApiKey, openaiApiKey, channelStyle);
+      wordTimings = await transcribeAudio(scriptAudioPath, elevenlabsApiKey, openaiApiKey, channelStyle, openrouterApiKey, openrouterModel);
       console.log('Transcription completed successfully');
     } catch (transcriptionError) {
       console.error('Transcription failed with error:', transcriptionError);
@@ -969,7 +1021,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     }) + '\n\n');
     
     // Generate background video sequence
-    const { videos, totalDurationInFrames } = await createBackgroundVideo(null, totalDurationInSeconds, background_video_type);
+    const { videos, totalDurationInFrames } = await createBackgroundVideo(totalDurationInSeconds, background_video_type);
     console.log(`Background videos generated: ${videos.length} videos`);
     
     // Add background videos to cleanup list
@@ -993,7 +1045,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     const scriptAudioFileName = path.basename(scriptAudioPath);
     
     // Use the server's IP address instead of localhost
-    const serverAddress = 'localhost:3003'; // Your machine's IP and port
+    const serverAddress = 'localhost:3004'; // Your machine's IP and port
     const hookAudioUrl = `http://${serverAddress}/audio/${hookAudioFileName}`;
     const scriptAudioUrl = `http://${serverAddress}/audio/${scriptAudioFileName}`;
     
@@ -1165,7 +1217,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
 // API endpoint to save user settings
 app.post('/api/save-user-settings', async (req, res) => {
   try {
-    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, otherSettings } = req.body;
+    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, openrouterApiKey, openrouterModel, otherSettings } = req.body;
     
     if (!userId) {
       return res.status(400).json({ 
@@ -1176,11 +1228,22 @@ app.post('/api/save-user-settings', async (req, res) => {
     
     console.log(`Saving settings for user: ${userId}`);
     
+    // Reset clients if API keys are being updated
+    if (openaiApiKey) {
+      resetOpenAIClient();
+    }
+    
+    if (openrouterApiKey) {
+      resetOpenRouterClient();
+    }
+    
     // Save to in-memory cache
     userSettingsCache.set(userId, {
       elevenlabsApiKey,
       elevenlabsVoiceModel,
       openaiApiKey,
+      openrouterApiKey,
+      openrouterModel,
       ...otherSettings,
       lastUpdated: new Date().toISOString()
     });
@@ -1231,11 +1294,6 @@ app.get('/api/user-settings/:userId', async (req, res) => {
 
 // Modified generate-video endpoint to use cached settings
 app.post('/api/generate-video', async (req, res) => {
-  // Set headers for streaming response
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
 
   // Array to keep track of files to clean up
   const filesToCleanup = [];
@@ -1286,14 +1344,22 @@ app.post('/api/generate-video', async (req, res) => {
     if (!elevenlabsApiKey) {
       return res.status(400).json({
         success: false,
-        error: 'ElevenLabs API key is required. Please add it to your settings.'
+        error: 'ElevenLabs API key is required for voice generation. Please add it to your settings.'
       });
     }
 
-    if (!openaiApiKey) {
+    if (!openaiApiKey && !openrouterApiKey) {
+      return res.status(400).json({
+        success: false, 
+        error: 'Either OpenAI or OpenRouter API key is required for subtitle generation. Please add at least one to your settings.'
+      });
+    }
+
+    // If OpenRouter is being used, ensure the model is specified
+    if (openrouterApiKey && !openrouterModel) {
       return res.status(400).json({
         success: false,
-        error: 'OpenAI API key is required for subtitle generation. Please add it to your settings.'
+        error: 'OpenRouter model is required when using OpenRouter API. Please specify a model in your settings.'
       });
     }
 
@@ -1381,7 +1447,7 @@ app.post('/api/generate-video', async (req, res) => {
     const scriptDurationAfterSilenceRemoval = parseFloat(scriptDurationStdout);
 
     // Calculate required speed factor for script to meet target duration
-    let scriptSpeedFactor = 1.2; // Default speed factor
+    let scriptSpeedFactor = 1.25; // Default speed factor
     console.log('Debug - target_duration:', target_duration);
     console.log('Debug - target_duration type:', typeof target_duration);
     if (target_duration && target_duration > 0) {
@@ -1453,7 +1519,9 @@ app.post('/api/generate-video', async (req, res) => {
         filesToCleanup,
         background_video_type,
         userId,
-        timestamp
+        timestamp,
+        openrouterApiKey,
+        openrouterModel
       );
 
       // Remove the redundant code since it's now handled in renderHookVideo
@@ -1496,7 +1564,7 @@ app.post('/api/generate-video', async (req, res) => {
 // Add login endpoint to save user settings
 app.post('/api/login', async (req, res) => {
   try {
-    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, otherSettings } = req.body;
+    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, openrouterApiKey, openrouterModel, otherSettings } = req.body;
     
     if (!userId) {
       return res.status(400).json({ 
@@ -1508,7 +1576,7 @@ app.post('/api/login', async (req, res) => {
     console.log(`User login: ${userId}`);
     
     // Save settings to cache on login if provided
-    if (elevenlabsApiKey || elevenlabsVoiceModel || openaiApiKey || otherSettings) {
+    if (elevenlabsApiKey || elevenlabsVoiceModel || openaiApiKey || openrouterApiKey || openrouterModel || otherSettings) {
       const existingSettings = userSettingsCache.get(userId) || {};
       
       userSettingsCache.set(userId, {
@@ -1516,11 +1584,24 @@ app.post('/api/login', async (req, res) => {
         ...(elevenlabsApiKey && { elevenlabsApiKey }),
         ...(elevenlabsVoiceModel && { elevenlabsVoiceModel }),
         ...(openaiApiKey && { openaiApiKey }),
+        ...(openrouterApiKey && { openrouterApiKey }),
+        ...(openrouterModel && { openrouterModel }),
         ...(otherSettings && { ...otherSettings }),
         lastUpdated: new Date().toISOString()
       });
       
-      console.log(`Settings saved on login for user: ${userId}`);
+      console.log(`Settings updated for user: ${userId}`);
+      
+      // Reset clients if API keys changed
+      if (openaiApiKey && openaiApiKey !== existingSettings.openaiApiKey) {
+        console.log('OpenAI API key changed, resetting client');
+        resetOpenAIClient();
+      }
+      
+      if (openrouterApiKey && openrouterApiKey !== existingSettings.openrouterApiKey) {
+        console.log('OpenRouter API key changed, resetting client');
+        resetOpenRouterClient();
+      }
     }
     
     res.json({ 
@@ -1537,7 +1618,11 @@ app.post('/api/login', async (req, res) => {
 // Add endpoint for generating scripts
 app.post('/api/generate-script', async (req, res) => {
   try {
-    const { openaiApiKey } = req.body;
+    const { openaiApiKey, openrouterApiKey, openrouterModel } = req.body;
+
+    console.log('Received request with OpenAI API key:', openaiApiKey);
+    console.log('Received request with OpenRouter API key:', openrouterApiKey);
+    console.log('Received request with OpenRouter model:', openrouterModel);
 
     if (!openaiApiKey) {
       return res.status(400).json({
@@ -1585,6 +1670,186 @@ Story:
         throw new Error('Failed to parse generated script format');
       }
 
+      // Get OpenRouter client with the provided API key
+      const openrouterClient = getOpenRouterClient(openrouterApiKey);
+      const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
+
+## CORE PARAMETERS
+- **Total Length:** At least 330 words and no more than 360 words.
+- **Hook:** Maximum 10 words, phrased as a question
+- **Format:** Plain text only
+- **Dialogue** Less than 5 lines of dialogue total that are brief sentences.
+
+## STORY STRUCTURE
+1. **Hook (First Line):** An engaging question that sets up the premise
+2. **Setup (First 25%):** Introduce protagonist and the annoying situation/antagonist
+3. **Escalation (Middle 65%):** Build tension with increasingly unreasonable antagonist behavior
+4. **Climax (Final 10%):** Deliver satisfying instant karma/comeuppance to the antagonist
+5. **Resolution:** End immediately after the payoff with a punchy final line
+
+## WRITING STYLE REQUIREMENTS
+- **Voice:** First-person, past tense, conversational tone
+- **Language:** Casual, as if telling a story to a friend
+- **Sentences:** Short, punchy, with dry/sarcastic observations, only what is necessary DO NOT write any filler that doesn't further the plot.
+- **Paragraphs:** Brief (1-3 sentences maximum)
+- **Dialogue:** Minimal no more than 5 lines of dialogue TOTAL
+- **Humor:** Dry, deadpan reactions to absurd situations
+- **Pacing:** Quick buildup with an unexpected but satisfying payoff
+
+
+## CONTENT GUIDELINES
+- Stories should feature relatable, everyday problems
+- Protagonist should remain relatively reasonable
+- Antagonist should be unreasonable but believable
+- The karma/comeuppance must feel proportional and ironic
+- End with the antagonist suffering immediate consequences
+- No extended reflection or aftermath after the payoff
+- The first sentence of the SETUP step must be designed to draw interest from the reader so they are compelled to keep reading.
+
+---
+
+##STORY EXAMPLES
+#IGNORE the story's plot. You are only using these for the writing style and the structure:
+
+#EXAMPLE STORY 1:
+I work in a bar, and one night, this guy walked in acting like he owned the place. He was buying drinks for every girl around him, bragging about how he made over $10 million a year.
+
+Every word out of his mouth was some crazy flex. "Oh yeah, I just got back from my third vacation this month. I only drink imported whiskey. None of this basic stuff. I might buy a yacht this weekend, but I already have two, so I don't know."
+
+And these girls? They were eating it up. They were asking for his number, laughing at everything he said, hanging on to every word. Dude was living the dream.
+
+But here's the funny part. I was watching all of it, because I was the one handing out the drinks, and the entire time, the girls were paying for their own.
+
+He sat there for hours, living off their reactions alone. Then the bar started emptying out, and it was time for him to pay. His total was $500, which, you know, should be nothing for a guy who makes $10 million a year.
+
+But the second I put the check in front of him, he froze. His face went pale. He looked around like he was planning an escape route, and then he actually tried to run, full sprint, straight for the exit. Didn't even hesitate.
+
+Luckily, our security was already watching him. They tackled him so fast, I thought he owed them money. Dragged him right back inside, sat him down, and we all waited for him to explain himself. And that's when the truth unraveled.
+
+Dude wasn't just lying about his money. His name was fake. His job was fake. Even the designer clothes he was flexing? Not his. And the girls? They were dying laughing.
+
+One of them even walked up, grabbed his phone, and said, "Can we remove our numbers from this?" Dude started the night a millionaire, and he ended it in debt to a bar.
+
+#EXAMPLE STORY 2:
+Taking my two-year-old daughter to the park was supposed to be a normal afternoon. She loved the swings, and I loved watching her laugh every time she kicked her little feet into the air.
+
+Then I noticed her, a woman standing nearby, arms crossed, staring at us. At first, I thought nothing of it. Parents watch their kids all the time.
+
+But then she marched over with this fake polite smile, and asked why I was with a random child. I told her plainly that she was my daughter.
+
+That's when things got weird. She narrowed her eyes and asked where her mother was. I said she was at home, confused as to why that even mattered. But Karen wasn't satisfied.
+
+She crouched down in front of my daughter and asked if she knew me. That's when I realized she actually thought I was kidnapping my own child.
+
+I told her to back off, but she gasped like I had just confessed to something terrible.
+
+Before I knew it, she was on the phone with the cops, loudly claiming that a suspicious man was at the park with a little girl who looked terrified.
+
+So now I was standing there, trying not to lose my mind while waiting for the cops to arrive. When they did, they immediately saw my daughter happily swinging, oblivious to the insanity unfolding. I explained the situation and they asked her who I was.
+
+She excitedly yelled, "Dad," and reached for me. I thought that would be the end of it, but Karen, in full hero mode, grabbed my daughter's hand and said she'd take her somewhere safe.
+
+Before I could even react, one of the cops stopped her. She started screaming that she was saving my child while pushing the cops off her. Meanwhile, my daughter was still giggling on the swing, completely unbothered.
+
+The Karen made such a scene that the cops had to take her away in the police car. And after this, I'm never letting a Karen near my daughter again.
+
+#EXAMPLE STORY 3:
+Growing up with a little brother meant constant fights, but this was by far the worst one.
+
+It started when I was sitting on the couch minding my own business, flipping through channels when my little brother stormed into the room.
+
+He planted his feet, crossed his arms, and in the most annoying voice possible said, "I was watching that." I didn't even look at him, not anymore.
+
+Cue the meltdown. First it was the classic, "Mom, he's not letting me watch TV," but Mom was in the other room, probably enjoying the silence for once.
+
+Then it escalated, stomping, whining, throwing himself onto the floor like his legs just gave out. But I held my ground. I had the remote. I had the power, and I wasn't about to give it up to a kid just because he wanted to watch it.
+
+Then something in him snapped. With pure fury, he grabbed the remote, wound up like a baseball pitcher in the World Series, and chucked it straight at the TV.
+
+The remote spun through the air, my brother's face filled with instant regret, and then the remote slammed into the screen.
+
+For a moment, everything was fine, then the crack appeared. It spread like a spiderweb, crawling across the glass as the screen flickered, and then the screen went black. Silence.
+
+I turned to my little brother, he turned to me, "Oh, you're so dead." But then things got even worse.
+
+This little demon child took one look at the TV, then at me, and burst into tears. He crumbled to the floor, sobbing uncontrollably. Right on cue, our mom walked in. She saw the destroyed TV, she saw the innocent little victim on the floor hiccuping through his sobs, she saw me standing there looking like I had just committed a war crime.
+
+"What did you do?" she said. I pointed at the remote, I pointed at the shattered screen, I pointed at my little brother who was obviously fake crying.
+
+Dad sighed, crossed his arms, and said the words that still haunt me to this day, "You're grounded for a month." I've never felt so betrayed.
+
+#EXAMPLE STORY 4:
+I work at a salon, and one day, a customer came in and tried to pay using a coupon. Not just any coupon, a coupon that had expired five years ago.
+
+I politely told them, \"Sorry, but this coupon is expired. I can't accept it.\" And that's when all logic left the building. They immediately got defensive.
+
+"Well, I don't have any other money, so you have to take it." I explained as nicely as possible that expired coupons don't work, and that's when they lost their mind.
+
+"You're breaking the law." I blinked. 
+
+"What?"
+
+"It is illegal to refuse a coupon under the law. You have to accept it no matter what." 
+
+"Oh?" So now we're in a courtroom. I told them that no such law exists, and that they had absolutely no idea what they were talking about.
+
+And that's when they went for the nuclear option. "I have a degree in law."
+
+Oh, okay, a fully licensed lawyer fighting to the death over a five-year-old salon coupon.
+
+At this point, I was holding back laughter. They kept going, telling me how they were smarter than I will ever be, that I was ruining their day, and that I would never make it anywhere in life.
+
+I took a deep breath, looked them dead in the eyes, and said, "If you were really that smart, you would have checked the expiration date."
+
+They froze. Their mouth twitched. Their brain was rebooting. And just to put the final nail in the coffin, I pulled out my phone and looked it up.
+
+Guess what? That coupon law they were so sure about didn't exist. I turned my screen around and showed them. Silence.
+
+Then, without another word, they stormed out in pure humiliation. But on the way, they pushed on a door that said "Pull". Not once, not twice, three times.
+
+At this point, I was just watching like it was a nature documentary.
+
+"Finally," I said, "Try pulling."
+
+They yanked the door open so aggressively they almost tripped, and right before stepping outside, they turned back one last time and yelled, "I'm still smarter than you."
+
+---
+
+## RESPONSE FORMAT EXAMPLE
+
+Hook:
+[Question that sets up premise in 10 words or less]
+
+Story:
+[Body of the story following the structure above]
+
+
+When given a hook or topic, I will generate a complete story following these exact guidelines, maintaining the specified tone, structure, and satisfying payoff ending.`;
+
+      const storyCompletion = await openrouterClient.chat.completions.create({
+        model: openrouterModel,
+        messages: [
+          {
+            role: "system",
+            content: openrouterSystemPrompt
+          },
+          {
+            role: "user",
+            content: hookMatch[1]
+          }
+        ],
+        temperature: 0.7
+      });
+
+      const claudeResponse = storyCompletion.choices[0].message.content;
+
+      const hookCompletion = claudeResponse.match(/Hook:\s*\n(.*?)(?=\n\nStory:)/s);
+      const scriptCompletion = claudeResponse.match(/Story:\s*\n(.*?)$/s);
+
+      if (!hookCompletion || !scriptCompletion) {
+        throw new Error('Failed to parse generated script format');
+      }
+
       // Clean markdown from text while preserving newlines
       const cleanText = (text) => {
         return text
@@ -1597,7 +1862,7 @@ Story:
       };
 
       const hook = cleanText(hookMatch[1]);
-      const script = cleanText(scriptMatch[1]);
+      const script = cleanText(scriptCompletion[1]);
 
       res.json({
         success: true,
@@ -1628,7 +1893,7 @@ Story:
 // Increase Remotion timeout to 10 minutes
 process.env.REMOTION_TIMEOUT = '600000'; // 10 minutes
 
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PORT || 3004;
 app.listen(PORT, 'localhost', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Server accessible at http://localhost:${PORT}`);

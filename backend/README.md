@@ -28,7 +28,7 @@ This is the backend server for the Reddit Clipper application. It handles audio 
 
 ## Environment Variables
 
-- `PORT` - Port to run the server on (default: 3003)
+- `PORT` - Port to run the server on (default: 3004)
 
 ## Running with Frontend
 

@@ -15,7 +15,7 @@ echo.
 timeout /t 5
 
 :: Start Cloudflare tunnel for backend
-start cmd /k "echo Creating Cloudflare Tunnel for Backend... && cloudflared tunnel --url http://localhost:3003"
+start cmd /k "echo Creating Cloudflare Tunnel for Backend... && cloudflared tunnel --url http://localhost:3004"
 echo Backend tunnel starting...
 echo.
 timeout /t 5

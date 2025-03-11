@@ -4,6 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Play, Loader2 } from "lucide-react";
 import type { ChannelProfile } from "@/types/channel";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface ContentInputModalProps {
   isOpen: boolean;
@@ -32,9 +34,35 @@ export function ContentInputModal({
   onGenerate,
   isGenerating
 }: ContentInputModalProps) {
+  // Custom scrollbar styles
+  const scrollbarStyles = {
+    scrollbarWidth: 'thin',
+    scrollbarColor: 'rgba(255, 255, 255, 0.2) rgba(0, 0, 0, 0.1)',
+    '&::-webkit-scrollbar': {
+      width: '8px',
+    },
+    '&::-webkit-scrollbar-track': {
+      background: 'rgba(0, 0, 0, 0.1)',
+      borderRadius: '4px',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: 'rgba(255, 255, 255, 0.2)',
+      borderRadius: '4px',
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+      background: 'rgba(255, 255, 255, 0.3)',
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[1000px] h-[90vh] flex flex-col bg-[#222222] text-white border border-white/10">
+      <DialogContent 
+        className={cn(
+          "bg-[#222222] text-white border border-white/10 p-6 pt-10",
+          "sm:max-w-[1000px] max-h-[90vh]"
+        )}
+        autoFocus={false}
+      >
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold">Write Your Script</DialogTitle>
           <DialogDescription className="text-muted-foreground">
@@ -44,38 +72,47 @@ export function ContentInputModal({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex-1 flex flex-col overflow-hidden space-y-4">
-          <div className="shrink-0">
+        <div className="space-y-6 mt-4">
+          <div className="grid gap-2">
             <div className="flex justify-between items-center">
-              <Label className="text-white text-base font-medium">Hook</Label>
-              <p className="text-xs text-muted-foreground">{hook.trim() ? hook.trim().split(/\s+/).length : 0} words</p>
+              <Label className="text-white text-lg font-medium">Title/Hook</Label>
+              <p className="text-xs text-muted-foreground">
+                {hook.trim() ? hook.trim().split(/\s+/).length : 0} words
+              </p>
             </div>
-            <input
+            <Input
               id="hook"
               placeholder="Enter an attention-grabbing hook..."
               value={hook}
               onChange={(e) => onHookChange(e.target.value)}
-              className="w-full px-4 py-3 bg-[#2A2A2A] border border-[#3A3A3A] rounded-md text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+              className="bg-[#2A2A2A] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 h-14 transition-colors"
+              style={{ fontSize: '16px' }}
             />
             <p className="text-xs text-muted-foreground mt-1">This will be the first thing viewers hear - make it catchy!</p>
           </div>
           
-          <div className="flex-1 flex flex-col min-h-0 mt-4">
-            <div className="flex justify-between items-center shrink-0">
-              <Label className="text-white text-base font-medium">Script</Label>
-              <p className="text-xs text-muted-foreground">{script.trim() ? script.trim().split(/\s+/).length : 0} words</p>
+          <div className="grid gap-2">
+            <div className="flex justify-between items-center">
+              <Label className="text-white text-lg font-medium">Script</Label>
+              <p className="text-xs text-muted-foreground">
+                {script.trim() ? script.trim().split(/\s+/).length : 0} words
+              </p>
             </div>
             <Textarea
               id="script"
               placeholder="Enter the main content of your video..."
               value={script}
               onChange={(e) => onScriptChange(e.target.value)}
-              className="flex-1 resize-none mt-2 bg-[#2A2A2A] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors overflow-auto"
+              className="resize-none min-h-[400px] bg-[#2A2A2A] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors"
+              style={{ 
+                fontSize: '16px',
+                ...scrollbarStyles
+              }}
             />
           </div>
         </div>
         
-        <div className="flex gap-3 pt-4 shrink-0">
+        <div className="flex gap-3 pt-4 mt-2">
           <Button 
             variant="outline"
             onClick={onBackToOptions}

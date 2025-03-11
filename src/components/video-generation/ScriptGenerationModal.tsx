@@ -89,6 +89,8 @@ export function ScriptGenerationModal({
         },
         body: JSON.stringify({
           openaiApiKey: userSettings.openaiApiKey,
+          openrouterApiKey: userSettings.openrouterApiKey,
+          openrouterModel: userSettings.openrouterModel,
         }),
       });
 
