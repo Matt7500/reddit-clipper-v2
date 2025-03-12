@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface GenerationStep {
   id: string;
@@ -13,42 +14,98 @@ interface ProgressModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   steps: GenerationStep[];
+  isMultiChannel?: boolean;
+  currentChannelName?: string;
+  currentChannelImage?: string | null;
+  completedCount?: number;
+  totalCount?: number;
 }
 
 export function ProgressModal({
   isOpen,
   onOpenChange,
-  steps
+  steps,
+  isMultiChannel = false,
+  currentChannelName = '',
+  currentChannelImage = null,
+  completedCount = 0,
+  totalCount = 0
 }: ProgressModalProps) {
+  const progressPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] bg-[#222222] text-white border border-white/10" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader className="text-center">
-          <DialogTitle className="text-2xl font-bold">Generating Video</DialogTitle>
+          <DialogTitle className="text-2xl font-bold">
+            {isMultiChannel ? "Generating Videos" : "Generating Video"}
+          </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Please wait while we process your content
+            {isMultiChannel 
+              ? `Processing videos for all channels (${completedCount}/${totalCount})`
+              : "Please wait while we process your content"
+            }
           </DialogDescription>
         </DialogHeader>
         
         <div className="py-6">
+          {isMultiChannel && (
+            <div className="mb-6">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-muted-foreground">Progress</span>
+                <span className="text-white font-medium">{completedCount} of {totalCount}</span>
+              </div>
+              <div className="w-full h-2 bg-[#2A2A2A] rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-primary transition-all duration-300 ease-in-out"
+                  style={{ width: `${progressPercentage}%` }}
+                />
+              </div>
+            </div>
+          )}
+          
+          {isMultiChannel && currentChannelName && (
+            <div className="mb-6 p-3 bg-[#2A2A2A] rounded-lg border border-[#3A3A3A]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10 bg-[#1A1A1A] flex items-center justify-center">
+                  {currentChannelImage ? (
+                    <img 
+                      src={currentChannelImage} 
+                      alt={currentChannelName} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white text-sm font-bold">
+                      {currentChannelName.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-white">Currently Processing</h3>
+                  <p className="text-xs text-muted-foreground">{currentChannelName}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="space-y-5">
             {steps.map((step) => (
               <div 
                 key={step.id} 
-                className={`
-                  flex items-center space-x-4 p-4 rounded-lg transition-all duration-200
-                  ${step.status === 'processing' ? 'bg-primary/5 border border-primary/20' : 'bg-[#2A2A2A] border border-[#3A3A3A]'}
-                  ${step.status === 'completed' ? 'opacity-70' : 'opacity-100'}
-                `}
+                className={cn(
+                  "flex items-center space-x-4 p-4 rounded-lg transition-all duration-200",
+                  step.status === 'processing' ? 'bg-primary/5 border border-primary/20' : 'bg-[#2A2A2A] border border-[#3A3A3A]',
+                  step.status === 'completed' ? 'opacity-70' : 'opacity-100'
+                )}
               >
                 <div className="flex-none">
-                  <div className={`
-                    w-5 h-5 rounded-full flex items-center justify-center
-                    ${step.status === 'waiting' ? 'border-2 border-[#3A3A3A] bg-[#2A2A2A]' : ''}
-                    ${step.status === 'processing' ? 'bg-primary animate-pulse' : ''}
-                    ${step.status === 'completed' ? 'bg-green-500/90' : ''}
-                    ${step.status === 'error' ? 'bg-red-500/90' : ''}
-                  `}>
+                  <div className={cn(
+                    "w-5 h-5 rounded-full flex items-center justify-center",
+                    step.status === 'waiting' ? 'border-2 border-[#3A3A3A] bg-[#2A2A2A]' : '',
+                    step.status === 'processing' ? 'bg-primary animate-pulse' : '',
+                    step.status === 'completed' ? 'bg-green-500/90' : '',
+                    step.status === 'error' ? 'bg-red-500/90' : ''
+                  )}>
                     {step.status === 'processing' && (
                       <Loader2 className="w-3 h-3 text-white animate-spin" />
                     )}

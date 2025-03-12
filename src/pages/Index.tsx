@@ -13,6 +13,8 @@ import { ScriptGenerationModal } from "@/components/video-generation/ScriptGener
 import { ContentInputModal } from "@/components/video-generation/ContentInputModal";
 import { ProgressModal } from "@/components/video-generation/ProgressModal";
 import { CompletedVideoDialog } from "@/components/video-generation/CompletedVideoDialog";
+import { MultiChannelScriptModal } from "@/components/video-generation/MultiChannelScriptModal";
+import { MultiChannelCompletedDialog } from "@/components/video-generation/MultiChannelCompletedDialog";
 import { CreateProfileDialog } from "@/components/settings/CreateProfileDialog";
 import { useChannelProfiles } from "@/contexts/ChannelProfileContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,7 +34,10 @@ const Index = () => {
   const [script, setScript] = useState("");
   const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
   
-  // New state for CreateProfileDialog
+  // New state for multi-channel
+  const [isMultiChannelScriptModalOpen, setIsMultiChannelScriptModalOpen] = useState(false);
+  
+  // State for CreateProfileDialog
   const [isCreateProfileDialogOpen, setIsCreateProfileDialogOpen] = useState(false);
   const [channelImage, setChannelImage] = useState<string | null>(null);
   const [customFonts, setCustomFonts] = useState<any[]>([]);
@@ -52,7 +57,17 @@ const Index = () => {
     isProgressModalOpen,
     setIsProgressModalOpen,
     isCompletedVideoDialogOpen,
-    setIsCompletedVideoDialogOpen
+    setIsCompletedVideoDialogOpen,
+    // Multi-channel properties
+    generateMultiChannelVideos,
+    isMultiChannelMode,
+    completedMultiChannelVideos,
+    isMultiChannelCompletedDialogOpen,
+    setIsMultiChannelCompletedDialogOpen,
+    currentChannelIndex,
+    totalChannels,
+    currentChannelName,
+    currentChannelImage
   } = useVideoGeneration();
 
   // Function to handle image upload for new channel
@@ -158,7 +173,13 @@ const Index = () => {
 
   const handleChannelContinue = () => {
     setIsChannelDialogOpen(false);
-    setIsWritingMethodDialogOpen(true);
+    
+    // If "all channels" is selected, go directly to multi-channel script modal
+    if (selectedChannelId === 'all') {
+      setIsMultiChannelScriptModalOpen(true);
+    } else {
+      setIsWritingMethodDialogOpen(true);
+    }
   };
 
   const handleSelectAI = () => {
@@ -204,6 +225,30 @@ const Index = () => {
         await generateVideo(finalHook, script, selectedChannelId, channel);
       }
     }
+  };
+
+  // Handler for multi-channel script generation
+  const handleGenerateMultiChannel = async (channelScripts: any[]) => {
+    setIsMultiChannelScriptModalOpen(false);
+    setIsProgressModalOpen(true);
+    
+    // Filter out any channels with empty scripts
+    const validScripts = channelScripts.filter(cs => 
+      cs.hook.trim() !== "" && cs.script.trim() !== ""
+    );
+    
+    if (validScripts.length === 0) {
+      toast({
+        title: "No valid content",
+        description: "Please provide at least one channel with both hook and script",
+        variant: "destructive",
+        duration: 2000,
+      });
+      setIsProgressModalOpen(false);
+      return;
+    }
+    
+    await generateMultiChannelVideos(validScripts, channels);
   };
 
   return (
@@ -304,10 +349,24 @@ const Index = () => {
         isGenerating={isVideoGenerating}
       />
 
+      {/* Multi-channel script modal */}
+      <MultiChannelScriptModal
+        isOpen={isMultiChannelScriptModalOpen}
+        onOpenChange={setIsMultiChannelScriptModalOpen}
+        channels={channels}
+        onGenerate={handleGenerateMultiChannel}
+        isGenerating={isVideoGenerating}
+      />
+
       <ProgressModal
         isOpen={isProgressModalOpen}
         onOpenChange={setIsProgressModalOpen}
         steps={generationSteps}
+        isMultiChannel={isMultiChannelMode}
+        currentChannelName={currentChannelName}
+        currentChannelImage={currentChannelImage}
+        completedCount={currentChannelIndex}
+        totalCount={totalChannels}
       />
 
       <CompletedVideoDialog
@@ -323,6 +382,14 @@ const Index = () => {
             ? 'All-Channels'
             : channels.find(c => c.id === selectedChannelId)?.nickname || undefined
         } : null}
+        apiUrl={API_URL}
+      />
+
+      {/* Multi-channel completed dialog */}
+      <MultiChannelCompletedDialog
+        isOpen={isMultiChannelCompletedDialogOpen}
+        onOpenChange={setIsMultiChannelCompletedDialogOpen}
+        videos={completedMultiChannelVideos}
         apiUrl={API_URL}
       />
 

@@ -159,8 +159,15 @@ export function ChannelSelectionModal({
                       All Channels
                     </h3>
                     <p className="text-sm text-zinc-400">
-                      Generate content for all your channels
+                      Generate videos for all your channels at once
                     </p>
+                    {localSelectedId === 'all' && (
+                      <div className="mt-2 p-2 bg-primary/10 rounded-md border border-primary/20">
+                        <p className="text-xs text-primary">
+                          You'll be able to write custom scripts for each channel in the next step
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className={cn(
                     "w-6 h-6 rounded-full border-2 flex items-center justify-center",
@@ -173,7 +180,7 @@ export function ChannelSelectionModal({
                 </div>
               </div>
               
-              {channels.map(channel => (
+              {channels.map((channel) => (
                 <div 
                   key={channel.id} 
                   onClick={() => handleChannelSelect(channel.id)}
