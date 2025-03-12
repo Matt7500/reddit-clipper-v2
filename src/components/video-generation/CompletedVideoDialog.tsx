@@ -14,6 +14,8 @@ interface CompletedVideoDialogProps {
     };
     hookVideo?: string;
     title?: string;
+    channelName?: string;
+    channelNickname?: string;
   } | null;
   apiUrl: string;
 }
@@ -66,7 +68,17 @@ export function CompletedVideoDialog({
       
       // Create filename from title or use default
       const title = videoData.videoMetadata?.title || videoData.title;
-      const filename = title ? `${title.trim().replace(/\s+/g, '-')}.mp4` : 'generated-video.mp4';
+      const channelName = videoData.channelNickname || videoData.channelName || '';
+      const channelNameFormatted = channelName.trim().replace(/\s+/g, '-');
+      
+      // Format the filename with channel name if available
+      let filename = 'generated-video.mp4';
+      if (title) {
+        const formattedTitle = title.trim().replace(/\s+/g, '-');
+        filename = channelNameFormatted 
+          ? `${channelNameFormatted}_${formattedTitle}.mp4` 
+          : `${formattedTitle}.mp4`;
+      }
       
       // Create and trigger download
       const link = document.createElement('a');
@@ -91,6 +103,11 @@ export function CompletedVideoDialog({
 
   // Get the video URL, either from Supabase or local server
   const videoUrl = videoData?.videoMetadata?.video_url || (videoData?.hookVideo && !videoData.hookVideo.startsWith('http') ? `${apiUrl}${videoData.hookVideo}` : videoData?.hookVideo);
+
+  // Format channel display name
+  const channelDisplayName = videoData?.channelNickname && videoData?.channelName
+    ? `${videoData.channelNickname} (${videoData.channelName})`
+    : videoData?.channelName || '';
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -118,6 +135,13 @@ export function CompletedVideoDialog({
                   preload="auto"
                 />
               </div>
+              
+              {channelDisplayName && (
+                <div className="text-center">
+                  <span className="text-zinc-400">Channel: </span>
+                  <span className="font-medium">{channelDisplayName}</span>
+                </div>
+              )}
               
               <div className="flex gap-3 justify-center">
                 <Button

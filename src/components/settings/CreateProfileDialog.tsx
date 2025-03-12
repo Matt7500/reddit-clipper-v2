@@ -14,6 +14,7 @@ interface CreateProfileDialogProps {
   onOpenChange: (open: boolean) => void;
   onCreateProfile: (data: {
     name: string;
+    nickname?: string;
     image_url: string | null;
     font: string;
     voice_id?: string;
@@ -44,6 +45,7 @@ export const CreateProfileDialog = ({
 }: CreateProfileDialogProps) => {
   const [activeTab, setActiveTab] = useState("basic");
   const [newProfileName, setNewProfileName] = useState("");
+  const [newProfileNickname, setNewProfileNickname] = useState("");
   const [newProfileFont, setNewProfileFont] = useState(defaultFonts[0].name);
   const [newProfileVoiceId, setNewProfileVoiceId] = useState("");
   const [newProfileStyle, setNewProfileStyle] = useState<StyleOption>('single');
@@ -59,6 +61,7 @@ export const CreateProfileDialog = ({
   useEffect(() => {
     if (isOpen) {
       setNewProfileName("");
+      setNewProfileNickname("");
       setNewProfileFont(defaultFonts[0].name);
       setNewProfileVoiceId("");
       setNewProfileStyle('single');
@@ -81,6 +84,7 @@ export const CreateProfileDialog = ({
 
     await onCreateProfile({
       name: newProfileName,
+      nickname: newProfileNickname.trim() || undefined,
       image_url: channelImage,
       font: newProfileFont,
       voice_id: newProfileVoiceId,
@@ -95,6 +99,7 @@ export const CreateProfileDialog = ({
 
     // Reset form
     setNewProfileName("");
+    setNewProfileNickname("");
     setNewProfileFont(defaultFonts[0].name);
     setNewProfileVoiceId("");
     setNewProfileStyle('single');
@@ -178,15 +183,28 @@ export const CreateProfileDialog = ({
                     </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Channel Name</label>
-                  <Input 
-                    type="text"
-                    placeholder="Enter your channel name"
-                    value={newProfileName}
-                    onChange={(e) => setNewProfileName(e.target.value)}
-                    className="bg-[#2A2A2A] border-[#3A3A3A]"
-                  />
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm text-muted-foreground">Channel Name</label>
+                    <Input 
+                      type="text"
+                      placeholder="Enter your channel name"
+                      value={newProfileName}
+                      onChange={(e) => setNewProfileName(e.target.value)}
+                      className="bg-[#2A2A2A] border-[#3A3A3A]"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm text-muted-foreground">Nickname (Optional)</label>
+                    <Input 
+                      type="text"
+                      placeholder="Display name"
+                      value={newProfileNickname}
+                      onChange={(e) => setNewProfileNickname(e.target.value.slice(0, 32))}
+                      className="bg-[#2A2A2A] border-[#3A3A3A]"
+                      maxLength={32}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm text-muted-foreground">Target Duration (seconds)</label>

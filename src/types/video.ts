@@ -5,6 +5,7 @@ export interface VideoGenerationData {
   user_id: string;
   channel_id: string;
   channel_name: string;
+  channel_nickname?: string;
   channel_image_url: string | null;
   hook_text: string;
   hook_audio_url: string | null;

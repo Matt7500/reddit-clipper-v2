@@ -240,6 +240,7 @@ export const Settings = () => {
       const selectedFont = allFonts.find(f => f.name === editingProfile.font);
       await updateProfile(editingProfile.id, {
         name: editingProfile.name,
+        nickname: editingProfile.nickname,
         image_url: channelImage,
         font: editingProfile.font,
         font_url: selectedFont?.url || null,

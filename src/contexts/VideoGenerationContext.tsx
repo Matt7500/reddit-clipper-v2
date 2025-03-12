@@ -64,6 +64,7 @@ export const VideoGenerationProvider = ({ children }: { children: React.ReactNod
     const processedVideos = data.map(video => ({
       ...video,
       channel_name: video.channel_profiles.name,
+      channel_nickname: video.channel_profiles.nickname,
       channel_image_url: video.channel_profiles.image_url,
     }));
 
@@ -154,6 +155,7 @@ export const VideoGenerationProvider = ({ children }: { children: React.ReactNod
       const newVideo = {
         ...video,
         channel_name: channel.name,
+        channel_nickname: channel.nickname,
         channel_image_url: channel.image_url,
       };
 
@@ -353,6 +355,7 @@ export const VideoGenerationProvider = ({ children }: { children: React.ReactNod
       const video = {
         ...data,
         channel_name: data.channel_profiles.name,
+        channel_nickname: data.channel_profiles.nickname,
         channel_image_url: data.channel_profiles.image_url,
       };
 

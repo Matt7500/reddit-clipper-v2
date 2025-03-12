@@ -80,7 +80,7 @@ export function ChannelSelectionModal({
     if (!channel.image_url) {
       return (
         <span className="text-white text-sm font-bold">
-          {channel.name.charAt(0).toUpperCase()}
+          {(channel.nickname || channel.name).charAt(0).toUpperCase()}
         </span>
       );
     }
@@ -92,14 +92,14 @@ export function ChannelSelectionModal({
         {/* Placeholder while loading */}
         {!isImageLoaded && (
           <span className="text-white text-sm font-bold absolute inset-0 flex items-center justify-center">
-            {channel.name.charAt(0).toUpperCase()}
+            {(channel.nickname || channel.name).charAt(0).toUpperCase()}
           </span>
         )}
         
         {/* Actual image */}
         <img 
           src={channel.image_url} 
-          alt={channel.name}
+          alt={channel.nickname || channel.name}
           className={cn(
             "w-full h-full object-cover transition-opacity duration-200",
             isImageLoaded ? "opacity-100" : "opacity-0"
@@ -194,10 +194,12 @@ export function ChannelSelectionModal({
                         "text-lg font-semibold",
                         localSelectedId === channel.id ? "text-primary" : "text-white"
                       )}>
-                        {channel.name}
+                        {channel.nickname 
+                          ? `${channel.nickname} (${channel.name})` 
+                          : channel.name}
                       </h3>
                       <p className="text-sm text-zinc-400">
-                        {channel.description || `Generate content for ${channel.name}`}
+                        {channel.description || `Generate content for ${channel.nickname || channel.name}`}
                       </p>
                     </div>
                     <div className={cn(

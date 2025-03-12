@@ -315,7 +315,13 @@ const Index = () => {
         onOpenChange={setIsCompletedVideoDialogOpen}
         videoData={completedVideo ? {
           ...completedVideo,
-          title: hook || "Generated Video"
+          title: hook || "Generated Video",
+          channelName: selectedChannelId === 'all' 
+            ? 'All-Channels' 
+            : channels.find(c => c.id === selectedChannelId)?.name || '',
+          channelNickname: selectedChannelId === 'all'
+            ? 'All-Channels'
+            : channels.find(c => c.id === selectedChannelId)?.nickname || undefined
         } : null}
         apiUrl={API_URL}
       />

@@ -138,15 +138,41 @@ export const EditProfileDialog = ({
                     </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Channel Name</label>
-                  <Input 
-                    type="text"
-                    placeholder="Enter your channel name"
-                    value={editingProfile.name}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onEditingProfileChange({ ...editingProfile, name: e.target.value })}
-                    className="bg-[#2A2A2A] border-[#3A3A3A]"
-                  />
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm text-muted-foreground">Channel Name</label>
+                    <Input 
+                      type="text"
+                      placeholder="Enter your channel name"
+                      value={editingProfile.name}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => onEditingProfileChange({ ...editingProfile, name: e.target.value })}
+                      className="bg-[#2A2A2A] border-[#3A3A3A]"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm text-muted-foreground">Nickname (Optional)</label>
+                    <Input 
+                      type="text"
+                      placeholder="Display name"
+                      value={editingProfile.nickname || ""}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                        onEditingProfileChange({ 
+                          ...editingProfile, 
+                          nickname: e.target.value.slice(0, 32) || undefined 
+                        })
+                      }
+                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
+                        // Only trim on blur to avoid cursor jumping while typing
+                        const trimmedValue = e.target.value.trim();
+                        onEditingProfileChange({
+                          ...editingProfile,
+                          nickname: trimmedValue || undefined
+                        });
+                      }}
+                      className="bg-[#2A2A2A] border-[#3A3A3A]"
+                      maxLength={32}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm text-muted-foreground">Target Duration (seconds)</label>

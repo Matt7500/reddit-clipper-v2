@@ -35,6 +35,7 @@ export function ScriptGenerationModal({
   const [editedScript, setEditedScript] = useState("");
   const [hookCopied, setHookCopied] = useState(false);
   const [scriptCopied, setScriptCopied] = useState(false);
+  const [generationStep, setGenerationStep] = useState<string>("initializing");
   const { toast } = useToast();
   const { settings: userSettings } = useUserSettings();
 
@@ -52,6 +53,22 @@ export function ScriptGenerationModal({
       setEditedScript(generatedScript.script);
     }
   }, [generatedScript]);
+
+  // Progress message based on current generation step
+  const getProgressMessage = () => {
+    switch (generationStep) {
+      case "initializing":
+        return "Initializing AI models...";
+      case "generating_hook":
+        return "Creating an attention-grabbing hook...";
+      case "generating_script":
+        return "Crafting a compelling script...";
+      case "finalizing":
+        return "Finalizing your content...";
+      default:
+        return "Our AI is creating content for your video...";
+    }
+  };
 
   const handleCopyText = async (text: string, type: 'hook' | 'script') => {
     try {
@@ -81,7 +98,14 @@ export function ScriptGenerationModal({
 
   const handleGenerateScript = async () => {
     setIsGeneratingScript(true);
+    setGenerationStep("initializing");
+    
     try {
+      // Simulate step progression
+      const progressTimer = setTimeout(() => {
+        setGenerationStep("generating_hook");
+      }, 1500);
+      
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/generate-script`, {
         method: 'POST',
         headers: {
@@ -94,10 +118,19 @@ export function ScriptGenerationModal({
         }),
       });
 
+      // Clear the timer if response comes back quickly
+      clearTimeout(progressTimer);
+      
+      // Update to next step
+      setGenerationStep("generating_script");
+      
       if (!response.ok) {
         throw new Error('Failed to generate script');
       }
 
+      // Simulate final step
+      setGenerationStep("finalizing");
+      
       const data = await response.json();
       if (data.success) {
         setGeneratedScript({
@@ -116,6 +149,7 @@ export function ScriptGenerationModal({
       });
     } finally {
       setIsGeneratingScript(false);
+      setGenerationStep("initializing"); // Reset for next time
     }
   };
 
@@ -164,7 +198,7 @@ export function ScriptGenerationModal({
               <Loader2 className="w-10 h-10 animate-spin text-primary mb-3" />
               <h3 className="text-lg font-medium text-white mb-1">Generating Your Script</h3>
               <p className="text-sm text-zinc-400 text-center max-w-md">
-                Our AI is creating content for your video...
+                {getProgressMessage()}
               </p>
             </div>
           ) : (

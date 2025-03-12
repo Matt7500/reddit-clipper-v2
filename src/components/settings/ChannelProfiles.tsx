@@ -90,7 +90,11 @@ export const ChannelProfiles = ({
                       )}
                     </div>
                     <div>
-                      <p className="font-medium text-white">{profile.name}</p>
+                      <p className="font-medium text-white">
+                        {profile.nickname 
+                          ? `${profile.nickname} (${profile.name})` 
+                          : profile.name}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

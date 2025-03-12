@@ -19,6 +19,8 @@ export function useVideoGeneration() {
     subtitle_size: number;
     stroke_size: number;
     has_background_music: boolean;
+    channelName?: string;
+    channelNickname?: string;
   } | null>(null);
   const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
   const [isCompletedVideoDialogOpen, setIsCompletedVideoDialogOpen] = useState(false);
@@ -285,7 +287,9 @@ export function useVideoGeneration() {
                       scriptAudio: data.scriptAudio,
                       subtitle_size: data.subtitle_size,
                       stroke_size: data.stroke_size,
-                      has_background_music: data.has_background_music
+                      has_background_music: data.has_background_music,
+                      channelName: channel.name,
+                      channelNickname: data.channelNickname
                     });
                     // Close progress modal and open completed video dialog
                     setIsProgressModalOpen(false);

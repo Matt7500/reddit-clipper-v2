@@ -54,6 +54,20 @@ export function ContentInputModal({
     }
   };
 
+  // Format channel display name
+  const getChannelDisplayName = () => {
+    if (selectedChannelId === 'all') {
+      return 'all channels';
+    }
+    
+    const selectedChannel = channels.find(c => c.id === selectedChannelId);
+    if (!selectedChannel) return 'selected channel';
+    
+    return selectedChannel.nickname 
+      ? `${selectedChannel.nickname} (${selectedChannel.name})`
+      : selectedChannel.name;
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent 
@@ -68,7 +82,7 @@ export function ContentInputModal({
           <DialogDescription className="text-muted-foreground">
             {selectedChannelId === 'all' 
               ? 'Creating content for all channels' 
-              : `Creating content for: ${channels.find(c => c.id === selectedChannelId)?.name || 'Selected channel'}`}
+              : `Creating content for: ${getChannelDisplayName()}`}
           </DialogDescription>
         </DialogHeader>
         
