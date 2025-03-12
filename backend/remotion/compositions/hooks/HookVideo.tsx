@@ -282,7 +282,7 @@ export const HookVideo: React.FC<Props> = ({
     color: '#1a1a1a',
     margin: '3px 0 0 6px',
     fontFamily,
-    width: '90%',
+    width: '95%',
     lineHeight: '0.9',
     flex: '1',
     overflow: 'visible',
