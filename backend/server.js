@@ -1675,7 +1675,7 @@ Story:
       const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
 
 ## CORE PARAMETERS
-- **Total Length:** The story should be 330 words in length.
+- **Total Length:** The story should be 350 words in length.
 - **Hook:** Maximum 10 words, phrased as a question
 - **Format:** Plain text only
 - **Dialogue** Less than 5 lines of dialogue total that are brief sentences.

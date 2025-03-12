@@ -121,17 +121,19 @@ export function ScriptGenerationModal({
       // Clear the timer if response comes back quickly
       clearTimeout(progressTimer);
       
-      // Update to next step
+      // Update to next step - this is after the first API call which generates the hook
       setGenerationStep("generating_script");
       
       if (!response.ok) {
         throw new Error('Failed to generate script');
       }
 
+      // Wait for the response data - this is the second API call which generates the script
+      const data = await response.json();
+      
       // Simulate final step
       setGenerationStep("finalizing");
       
-      const data = await response.json();
       if (data.success) {
         setGeneratedScript({
           hook: data.hook,
