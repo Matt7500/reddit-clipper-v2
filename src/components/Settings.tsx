@@ -20,6 +20,7 @@ import {
   DeleteProfileDialog,
   EditProfileDialog,
   FontSettings,
+  GitHubUpdate,
   type Font,
   type VoiceModel,
   type Voice,
@@ -738,6 +739,8 @@ export const Settings = () => {
           onFontUpload={handleFontUpload}
           onDeleteFont={handleDeleteFont}
         />
+        
+        <GitHubUpdate />
       </div>
 
       <EditProfileDialog

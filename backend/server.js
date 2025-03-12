@@ -243,32 +243,33 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp =
                 pitchFactor = 1.4;
                 // No separate tempo adjustment needed for hook
             } else {
-                // Script audio: use fixed pitch factor of 1.3 and adjust tempo separately
-                pitchFactor = 1.3; // Fixed pitch factor for script audio
-                
-                // Calculate tempo factor based on target duration if specified
+                // Script audio: calculate speed needed to match target duration
                 if (targetDuration) {
                     // Calculate total speed factor needed to reach target duration
                     const totalSpeedFactor = durationAfterSilence / targetDuration;
                     
-                    // Since pitch is now fixed, we need to adjust tempo to meet the target duration
-                    // The formula accounts for the fact that pitch change already affects duration
-                    tempoFactor = totalSpeedFactor / pitchFactor;
+                    // When pitchUp is true, we want both the pitch and tempo to contribute to speed
+                    // Use the total speed factor as the pitch factor to get the chipmunk effect
+                    pitchFactor = totalSpeedFactor;
                     
-                    // Ensure tempo factor is within reasonable limits
-                    tempoFactor = Math.max(0.5, Math.min(2.0, tempoFactor));
+                    // No additional tempo adjustment needed, since the pitch change will handle speed
+                    tempoFactor = 1.0;
+                    
+                    // Ensure pitch factor is within reasonable limits
+                    pitchFactor = Math.max(1.0, Math.min(2.0, pitchFactor));
                     
                     console.log(`Script audio adjustments:`, {
                         originalDuration: currentDuration,
                         durationAfterSilence: durationAfterSilence,
                         targetDuration: targetDuration,
-                        pitchFactor: pitchFactor, // Fixed at 1.3
+                        pitchFactor: pitchFactor,
                         tempoFactor: tempoFactor,
-                        expectedFinalDuration: durationAfterSilence / (pitchFactor * tempoFactor)
+                        expectedFinalDuration: durationAfterSilence / pitchFactor
                     });
                 } else {
-                    // No target duration specified, use default speed factor for tempo
-                    tempoFactor = speedFactor / pitchFactor; // Adjust tempo to achieve desired speed
+                    // No target duration specified, use default speed factor
+                    pitchFactor = speedFactor;
+                    tempoFactor = 1.0;
                 }
             }
 
@@ -1898,4 +1899,48 @@ app.listen(PORT, 'localhost', () => {
   console.log(`Server accessible at http://localhost:${PORT}`);
   console.log(`Audio files will be available at: http://localhost:${PORT}/audio/`);
   console.log(`Images will be available at: http://localhost:${PORT}/images/`);
+}); 
+
+// Add endpoint to update from GitHub
+app.post('/api/update-from-github', async (req, res) => {
+  try {
+    console.log('Updating from GitHub...');
+    
+    // Get the current directory
+    const currentDir = process.cwd();
+    console.log(`Current directory: ${currentDir}`);
+    
+    // Navigate to the project root (one level up from backend)
+    const projectRoot = path.resolve(currentDir, '..');
+    console.log(`Project root: ${projectRoot}`);
+    
+    // Execute git pull command
+    const { stdout, stderr } = await execAsync('git pull', { cwd: projectRoot });
+    
+    console.log('Git pull stdout:', stdout);
+    if (stderr) console.log('Git pull stderr:', stderr);
+    
+    // Check if there were any updates
+    if (stdout.includes('Already up to date.')) {
+      return res.json({
+        success: true,
+        message: 'Already up to date. No changes were pulled.',
+        updated: false
+      });
+    }
+    
+    // Return success response with update details
+    res.json({
+      success: true,
+      message: 'Successfully updated from GitHub',
+      details: stdout,
+      updated: true
+    });
+  } catch (error) {
+    console.error('Error updating from GitHub:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An error occurred while updating from GitHub'
+    });
+  }
 }); 
