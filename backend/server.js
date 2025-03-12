@@ -243,33 +243,32 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp =
                 pitchFactor = 1.4;
                 // No separate tempo adjustment needed for hook
             } else {
-                // Script audio: calculate speed needed to match target duration
+                // Script audio: use fixed pitch factor of 1.3 and adjust tempo separately
+                pitchFactor = 1.3; // Fixed pitch factor for script audio
+                
+                // Calculate tempo factor based on target duration if specified
                 if (targetDuration) {
                     // Calculate total speed factor needed to reach target duration
                     const totalSpeedFactor = durationAfterSilence / targetDuration;
                     
-                    // When pitchUp is true, we want both the pitch and tempo to contribute to speed
-                    // Use the total speed factor as the pitch factor to get the chipmunk effect
-                    pitchFactor = totalSpeedFactor;
+                    // Since pitch is now fixed, we need to adjust tempo to meet the target duration
+                    // The formula accounts for the fact that pitch change already affects duration
+                    tempoFactor = totalSpeedFactor / pitchFactor;
                     
-                    // No additional tempo adjustment needed, since the pitch change will handle speed
-                    tempoFactor = 1.0;
-                    
-                    // Ensure pitch factor is within reasonable limits
-                    pitchFactor = Math.max(1.0, Math.min(2.0, pitchFactor));
+                    // Ensure tempo factor is within reasonable limits
+                    tempoFactor = Math.max(0.5, Math.min(2.0, tempoFactor));
                     
                     console.log(`Script audio adjustments:`, {
                         originalDuration: currentDuration,
                         durationAfterSilence: durationAfterSilence,
                         targetDuration: targetDuration,
-                        pitchFactor: pitchFactor,
+                        pitchFactor: pitchFactor, // Fixed at 1.3
                         tempoFactor: tempoFactor,
-                        expectedFinalDuration: durationAfterSilence / pitchFactor
+                        expectedFinalDuration: durationAfterSilence / (pitchFactor * tempoFactor)
                     });
                 } else {
-                    // No target duration specified, use default speed factor
-                    pitchFactor = speedFactor;
-                    tempoFactor = 1.0;
+                    // No target duration specified, use default speed factor for tempo
+                    tempoFactor = speedFactor / pitchFactor; // Adjust tempo to achieve desired speed
                 }
             }
 
@@ -1423,9 +1422,9 @@ app.post('/api/generate-video', async (req, res) => {
     fs.writeFileSync(scriptAudioRawPath, Buffer.from(scriptAudioBuffer));
     console.log(`Raw script audio saved to: ${scriptAudioRawPath}`);
 
-    // Process hook audio with fixed speed (1.3x) and remove silences
+    // Process hook audio with fixed speed (1.2x) and remove silences
     console.log('Processing hook audio...');
-    await processAudio(hookAudioRawPath, hookAudioProcessedPath, 1.3, pitch_up, true);
+    await processAudio(hookAudioRawPath, hookAudioProcessedPath, 1.2, pitch_up, true);
     
     // Clean up raw hook audio file since we have the processed version
     await cleanupFiles([hookAudioRawPath]);
