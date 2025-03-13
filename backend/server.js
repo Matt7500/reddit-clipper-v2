@@ -1631,6 +1631,40 @@ app.post('/api/generate-script', async (req, res) => {
       });
     }
 
+    // Define topics with their weights
+    const topics = [
+      { name: 'Teachers', weight: 30 },
+      { name: 'Parents', weight: 20 },
+      { name: 'Dads', weight: 20 },
+      { name: 'General', weight: 20 },
+      { name: 'Karen', weight: 10 }
+    ];
+
+    // Function to select a topic based on weighted probabilities
+    const selectWeightedTopic = (topics) => {
+      // Calculate total weight
+      const totalWeight = topics.reduce((sum, topic) => sum + topic.weight, 0);
+      
+      // Generate a random number between 0 and totalWeight
+      const randomValue = Math.random() * totalWeight;
+      
+      // Find the topic that corresponds to the random value
+      let cumulativeWeight = 0;
+      for (const topic of topics) {
+        cumulativeWeight += topic.weight;
+        if (randomValue <= cumulativeWeight) {
+          return topic.name;
+        }
+      }
+      
+      // Fallback to the last topic (should never happen unless weights are 0)
+      return topics[topics.length - 1].name;
+    };
+
+    // Select a topic based on weighted probabilities
+    const selectedTopic = selectWeightedTopic(topics);
+    console.log(`Selected topic: ${selectedTopic}`);
+
     // Get OpenAI client with the provided API key
     const client = getOpenAIClient(openaiApiKey);
     const systemPrompt = `You are tasked with creating a Reddit-style short story for YouTube Shorts.`;
@@ -1645,7 +1679,7 @@ app.post('/api/generate-script', async (req, res) => {
           },
           {
             role: "user",
-            content: `Write a full length story that is 350 words in length. The hook MUST be a MAXIMUM of 10 words in length. Only write in plaintext.
+            content: `Write a full length story that is 350 words in length about the topic: ${selectedTopic}.The hook MUST be a MAXIMUM of 10 words in length. Only write in plaintext.
 
 Return your response in the following format:
 
@@ -1760,7 +1794,8 @@ When given a hook or topic, I will generate a complete story following these exa
       res.json({
         success: true,
         hook,
-        script
+        script,
+        topic: selectedTopic
       });
     } catch (apiError) {
       console.error('OpenAI API Error:', apiError);
