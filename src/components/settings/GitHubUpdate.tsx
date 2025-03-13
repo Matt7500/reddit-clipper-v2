@@ -65,18 +65,22 @@ export const GitHubUpdate = () => {
   };
 
   return (
-    <Card className="w-full bg-[#F1F1F1]/10">
-      <CardHeader>
-        <div className="flex items-center gap-3">
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-medium text-white flex items-center gap-2 text-xl">
           <Github className="w-5 h-5 text-primary" />
-          <CardTitle className="text-xl text-white">GitHub Updates</CardTitle>
+          GitHub Updates
+        </h1>
+      </div>
+      <div className="space-y-4 p-4 rounded-lg bg-[#2A2A2A] border border-white/10">
+        <div className="flex items-center gap-2 mb-2">
+          <Github className="w-5 h-5 text-blue-400" />
+          <h4 className="font-medium text-white">Update Application</h4>
         </div>
-        <CardDescription className="text-gray-300">
-          Update the application from the GitHub repository
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
         <div className="space-y-4">
+          <p className="text-sm text-gray-300">
+            Pull the latest changes from the GitHub repository
+          </p>
           <div className="flex items-center gap-4">
             <Button 
               onClick={handleUpdate} 
@@ -95,9 +99,6 @@ export const GitHubUpdate = () => {
                 </>
               )}
             </Button>
-            <p className="text-sm text-gray-300">
-              Pull the latest changes from the GitHub repository
-            </p>
           </div>
 
           {updateResult && (
@@ -125,7 +126,7 @@ export const GitHubUpdate = () => {
             </Alert>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }; 
