@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
@@ -30,6 +30,15 @@ export function MultiChannelCompletedDialog({
   const { toast } = useToast();
   const [copiedTitles, setCopiedTitles] = useState<Record<string, boolean>>({});
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
+
+  // Add debugging
+  console.log('MultiChannelCompletedDialog rendered with:', { isOpen, videos });
+
+  useEffect(() => {
+    if (isOpen && videos.length > 0) {
+      console.log('MultiChannelCompletedDialog opened with videos:', videos);
+    }
+  }, [isOpen, videos]);
 
   const handleCopyTitle = async (video: VideoData) => {
     if (!video.title) return;
@@ -121,9 +130,15 @@ export function MultiChannelCompletedDialog({
       >
         <DialogHeader className="space-y-1.5">
           <div className="text-center">
-            <DialogTitle className="text-xl font-semibold">Videos Generated Successfully</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">
+              {videos.length > 1 
+                ? "Videos Generated Successfully" 
+                : "Video Generated Successfully"}
+            </DialogTitle>
             <DialogDescription className="text-zinc-400 mt-1.5">
-              {videos.length} videos have been generated for your channels
+              {videos.length > 1 
+                ? `${videos.length} videos have been generated for your channels` 
+                : "Your video has been generated and is ready to be downloaded"}
             </DialogDescription>
           </div>
         </DialogHeader>

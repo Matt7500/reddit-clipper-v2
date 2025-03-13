@@ -51,6 +51,25 @@ export function MultiChannelScriptModal({
   const [generatingSingleChannel, setGeneratingSingleChannel] = useState<string | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState<'initializing' | 'generating_hook' | 'generating_script' | 'finalizing'>('initializing');
+  const [isClosing, setIsClosing] = useState(false);
+
+  // Simple handler for closing the modal
+  const handleClose = React.useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  // Handler for back to channels button
+  const handleBackToChannels = React.useCallback(() => {
+    // Start closing animation
+    setIsClosing(true);
+    
+    // Wait for animation to complete before actually closing
+    setTimeout(() => {
+      // Close this modal
+      onOpenChange(false);
+      setIsClosing(false);
+    }, 200); // Match this with the animation duration
+  }, [onOpenChange]);
 
   // Reset channel scripts when channels change
   useEffect(() => {
@@ -271,16 +290,53 @@ export function MultiChannelScriptModal({
   ));
   CustomDialogContent.displayName = "CustomDialogContent";
 
+  // If not open, don't render anything to prevent flickering
+  if (!isOpen) {
+    return null;
+  }
+  
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <CustomDialogContent 
+    <Dialog 
+      open={isOpen} 
+      onOpenChange={(open) => {
+        if (!open) {
+          // Start closing animation
+          setIsClosing(true);
+          
+          // Wait for animation to complete before actually closing
+          setTimeout(() => {
+            onOpenChange(false);
+            setIsClosing(false);
+          }, 200); // Match this with the animation duration
+        } else {
+          onOpenChange(true);
+        }
+      }}
+    >
+      <DialogContent 
         className={cn(
           "bg-[#222222] text-white border border-white/10 p-6",
-          "sm:max-w-[1000px] max-h-[90vh] overflow-hidden flex flex-col"
+          "sm:max-w-[1000px] max-h-[90vh] overflow-hidden flex flex-col",
+          "hide-close-button",
+          isClosing && "dialog-closing"
         )}
-        autoFocus={false}
-      > 
-        <style jsx>{`
+      >
+        <style jsx global>{`
+          /* Target the close button in Radix UI Dialog with high specificity */
+          [data-radix-popper-content-wrapper] [role="dialog"] button[type="button"][data-state] {
+            display: none !important;
+          }
+          
+          /* Target by exact class names used in shadcn/ui Dialog */
+          .fixed.z-50.gap-4.bg-background.p-6.shadow-lg button[type="button"][class*="absolute"] {
+            display: none !important;
+          }
+          
+          /* Target by position - most Dialog close buttons are positioned absolutely in the top-right */
+          .hide-close-button button[type="button"][class*="absolute"][class*="right"] {
+            display: none !important;
+          }
+          
           /* Animation styles */
           @keyframes scaleIn {
             0% {
@@ -297,6 +353,7 @@ export function MultiChannelScriptModal({
               transform: scale(1);
               opacity: 1;
             }
+          }
           
           @keyframes pulse {
             0%, 100% {
@@ -322,6 +379,22 @@ export function MultiChannelScriptModal({
           
           .animate-tab-expand {
             animation: tabExpand 0.3s ease-out forwards;
+          }
+          
+          /* Dialog closing animation */
+          @keyframes dialogClose {
+            0% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            100% {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+          }
+          
+          .dialog-closing {
+            animation: dialogClose 0.2s ease-out forwards;
           }
         `}</style>
         
@@ -534,12 +607,12 @@ export function MultiChannelScriptModal({
         
         <div className="flex justify-between items-center mt-2 pt-2">
           <Button
-            onClick={() => onOpenChange(false)}
+            onClick={handleBackToChannels}
             variant="ghost"
             className="text-muted-foreground hover:text-white hover:bg-[#333333] gap-2 px-3 py-1 h-9 text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Channels
+            Back
           </Button>
           <Button
             onClick={handleGenerateAll}
@@ -554,12 +627,12 @@ export function MultiChannelScriptModal({
             ) : (
               <>
                 <Play className="w-4 h-4" />
-                Generate All Videos ({channelsWithContent}/{channels.length})
+                Generate Videos ({channelsWithContent}/{channels.length})
               </>
             )}
           </Button>
         </div>
-      </CustomDialogContent>
+      </DialogContent>
     </Dialog>
   );
 } 

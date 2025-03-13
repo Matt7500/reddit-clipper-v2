@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { VideoGallery } from "@/components/VideoGallery";
 import { Play, Settings as SettingsIcon, LogOut } from "lucide-react";
@@ -7,12 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChannels } from "@/hooks/useChannels";
 import { useVideoGeneration } from "@/hooks/useVideoGeneration";
-import { ChannelSelectionModal } from "@/components/video-generation/ChannelSelectionModal";
-import { WritingMethodModal } from "@/components/video-generation/WritingMethodModal";
-import { ScriptGenerationModal } from "@/components/video-generation/ScriptGenerationModal";
-import { ContentInputModal } from "@/components/video-generation/ContentInputModal";
 import { ProgressModal } from "@/components/video-generation/ProgressModal";
-import { CompletedVideoDialog } from "@/components/video-generation/CompletedVideoDialog";
 import { MultiChannelScriptModal } from "@/components/video-generation/MultiChannelScriptModal";
 import { MultiChannelCompletedDialog } from "@/components/video-generation/MultiChannelCompletedDialog";
 import { CreateProfileDialog } from "@/components/settings/CreateProfileDialog";
@@ -26,15 +21,8 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 const Index = () => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isChannelDialogOpen, setIsChannelDialogOpen] = useState(false);
-  const [isWritingMethodDialogOpen, setIsWritingMethodDialogOpen] = useState(false);
-  const [isContentDialogOpen, setIsContentDialogOpen] = useState(false);
-  const [selectedChannelId, setSelectedChannelId] = useState<string | 'all' | null>(null);
-  const [hook, setHook] = useState("");
-  const [script, setScript] = useState("");
-  const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
   
-  // New state for multi-channel
+  // Only keep the MultiChannelScriptModal state
   const [isMultiChannelScriptModalOpen, setIsMultiChannelScriptModalOpen] = useState(false);
   
   // State for CreateProfileDialog
@@ -51,13 +39,10 @@ const Index = () => {
   const { createProfile } = useChannelProfiles();
   const {
     isGenerating: isVideoGenerating,
-    completedVideo,
     generationSteps,
     generateVideo,
     isProgressModalOpen,
     setIsProgressModalOpen,
-    isCompletedVideoDialogOpen,
-    setIsCompletedVideoDialogOpen,
     // Multi-channel properties
     generateMultiChannelVideos,
     isMultiChannelMode,
@@ -154,6 +139,7 @@ const Index = () => {
     }
   };
 
+  // Simplified function to directly open the MultiChannelScriptModal
   const handleStartGeneration = () => {
     if (channels.length === 0) {
       toast({
@@ -163,67 +149,8 @@ const Index = () => {
       });
       setTimeout(() => navigate('/settings'), 1500);
     } else {
-      setIsChannelDialogOpen(true);
-    }
-  };
-
-  const handleChannelSelect = (channelId: string | 'all') => {
-    setSelectedChannelId(channelId);
-  };
-
-  const handleChannelContinue = () => {
-    setIsChannelDialogOpen(false);
-    
-    // If "all channels" is selected, go directly to multi-channel script modal
-    if (selectedChannelId === 'all') {
+      // Directly open the MultiChannelScriptModal
       setIsMultiChannelScriptModalOpen(true);
-    } else {
-      setIsWritingMethodDialogOpen(true);
-    }
-  };
-
-  const handleSelectAI = () => {
-    setIsWritingMethodDialogOpen(false);
-    setIsScriptModalOpen(true);
-  };
-
-  const handleSelectManual = () => {
-    setIsWritingMethodDialogOpen(false);
-    setIsContentDialogOpen(true);
-  };
-
-  const handleManualWrite = () => {
-    setIsScriptModalOpen(false);
-    setIsContentDialogOpen(true);
-  };
-
-  const handleGenerate = async () => {
-    setIsContentDialogOpen(false);
-    setIsProgressModalOpen(true);
-
-    if (selectedChannelId && selectedChannelId !== 'all') {
-      const channel = channels.find((c: ChannelProfile) => c.id === selectedChannelId);
-      if (channel) {
-        // Make sure hook is not empty
-        const finalHook = hook.trim() || "Generated Video";
-        setHook(finalHook);
-        await generateVideo(finalHook, script, selectedChannelId, channel);
-      }
-    }
-  };
-
-  const handleGenerateFromScript = async (hook: string, script: string) => {
-    setIsScriptModalOpen(false);
-    setIsProgressModalOpen(true);
-
-    if (selectedChannelId && selectedChannelId !== 'all') {
-      const channel = channels.find((c: ChannelProfile) => c.id === selectedChannelId);
-      if (channel) {
-        // Make sure hook is not empty and update the state
-        const finalHook = hook.trim() || "Generated Video";
-        setHook(finalHook);
-        await generateVideo(finalHook, script, selectedChannelId, channel);
-      }
     }
   };
 
@@ -304,52 +231,7 @@ const Index = () => {
         </div>
       </div>
 
-      <ChannelSelectionModal
-        isOpen={isChannelDialogOpen}
-        onOpenChange={setIsChannelDialogOpen}
-        selectedChannelId={selectedChannelId}
-        onChannelSelect={handleChannelSelect}
-        onContinue={handleChannelContinue}
-        channels={channels}
-        isLoadingChannels={isLoadingChannels}
-        onCreateChannel={() => setIsCreateProfileDialogOpen(true)}
-      />
-
-      <WritingMethodModal
-        isOpen={isWritingMethodDialogOpen}
-        onOpenChange={setIsWritingMethodDialogOpen}
-        onSelectAI={handleSelectAI}
-        onSelectManual={handleSelectManual}
-      />
-
-      <ScriptGenerationModal
-        isOpen={isScriptModalOpen}
-        onOpenChange={setIsScriptModalOpen}
-        selectedChannelId={selectedChannelId}
-        channels={channels}
-        onManualWrite={handleManualWrite}
-        onGenerateVideo={handleGenerateFromScript}
-        isGenerating={isVideoGenerating}
-      />
-
-      <ContentInputModal
-        isOpen={isContentDialogOpen}
-        onOpenChange={setIsContentDialogOpen}
-        selectedChannelId={selectedChannelId}
-        channels={channels}
-        hook={hook}
-        script={script}
-        onHookChange={setHook}
-        onScriptChange={setScript}
-        onBackToOptions={() => {
-          setIsContentDialogOpen(false);
-          setIsWritingMethodDialogOpen(true);
-        }}
-        onGenerate={handleGenerate}
-        isGenerating={isVideoGenerating}
-      />
-
-      {/* Multi-channel script modal */}
+      {/* Multi-channel script modal - now the primary content creation interface */}
       <MultiChannelScriptModal
         isOpen={isMultiChannelScriptModalOpen}
         onOpenChange={setIsMultiChannelScriptModalOpen}
@@ -369,23 +251,7 @@ const Index = () => {
         totalCount={totalChannels}
       />
 
-      <CompletedVideoDialog
-        isOpen={isCompletedVideoDialogOpen}
-        onOpenChange={setIsCompletedVideoDialogOpen}
-        videoData={completedVideo ? {
-          ...completedVideo,
-          title: hook || "Generated Video",
-          channelName: selectedChannelId === 'all' 
-            ? 'All-Channels' 
-            : channels.find(c => c.id === selectedChannelId)?.name || '',
-          channelNickname: selectedChannelId === 'all'
-            ? 'All-Channels'
-            : channels.find(c => c.id === selectedChannelId)?.nickname || undefined
-        } : null}
-        apiUrl={API_URL}
-      />
-
-      {/* Multi-channel completed dialog */}
+      {/* Completed dialog for both single and multi-channel modes */}
       <MultiChannelCompletedDialog
         isOpen={isMultiChannelCompletedDialogOpen}
         onOpenChange={setIsMultiChannelCompletedDialogOpen}

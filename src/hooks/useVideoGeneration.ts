@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from "@/components/ui/use-toast";
 import { useVideoGeneration as useVideoGenerationContext } from '@/contexts/VideoGenerationContext';
 import { useElevenLabsSettings } from '@/hooks/useElevenLabsSettings';
@@ -29,23 +29,14 @@ interface CompletedMultiChannelVideo {
 export function useVideoGeneration() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [audioResult, setAudioResult] = useState<{ hookAudio: string; scriptAudio: string } | null>(null);
-  const [completedVideo, setCompletedVideo] = useState<{
-    hookVideo: string;
-    hookAudio: string;
-    scriptAudio: string;
-    subtitle_size: number;
-    stroke_size: number;
-    has_background_music: boolean;
-    channelName?: string;
-    channelNickname?: string;
-  } | null>(null);
-  const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
-  const [isCompletedVideoDialogOpen, setIsCompletedVideoDialogOpen] = useState(false);
   
-  // New state for multi-channel video generation
-  const [isMultiChannelMode, setIsMultiChannelMode] = useState(false);
+  // Simplified state for completed videos
   const [completedMultiChannelVideos, setCompletedMultiChannelVideos] = useState<CompletedMultiChannelVideo[]>([]);
   const [isMultiChannelCompletedDialogOpen, setIsMultiChannelCompletedDialogOpen] = useState(false);
+  
+  // Progress modal state
+  const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+  const [isMultiChannelMode, setIsMultiChannelMode] = useState(false);
   const [currentChannelIndex, setCurrentChannelIndex] = useState(0);
   const [totalChannels, setTotalChannels] = useState(0);
   const [currentChannelName, setCurrentChannelName] = useState('');
@@ -116,7 +107,7 @@ export function useVideoGeneration() {
 
     setIsGenerating(true);
     setAudioResult(null);
-    setCompletedVideo(null);
+    setCompletedMultiChannelVideos([]);
     setIsProgressModalOpen(true);
     setIsMultiChannelMode(false);
     resetSteps();
@@ -155,6 +146,25 @@ export function useVideoGeneration() {
       // Update video status to completed
       await updateVideoStatus(videoData.id, 'video_complete');
       
+      // Add to completed videos array for the dialog
+      if (result && result.hookVideo) {
+        console.log('Setting completed video and showing dialog');
+        
+        // Add to multi-channel videos array for the dialog
+        setCompletedMultiChannelVideos([{
+          channelId: channel.id,
+          channelName: channel.name,
+          channelNickname: channel.nickname,
+          channelImageUrl: channel.image_url,
+          title: hook,
+          videoUrl: result.hookVideo
+        }]);
+        
+        // Close progress modal and open completed dialog
+        setIsProgressModalOpen(false);
+        setIsMultiChannelCompletedDialogOpen(true);
+      }
+      
       toast({
         title: "Video generation completed",
         description: "Your video has been generated successfully.",
@@ -186,7 +196,7 @@ export function useVideoGeneration() {
     }
   };
 
-  // New function to generate videos for multiple channels
+  // Function to generate videos for multiple channels
   const generateMultiChannelVideos = async (
     channelScripts: ChannelScript[],
     channels: ChannelProfile[]
@@ -203,7 +213,6 @@ export function useVideoGeneration() {
 
     setIsGenerating(true);
     setAudioResult(null);
-    setCompletedVideo(null);
     setCompletedMultiChannelVideos([]);
     setIsProgressModalOpen(true);
     setIsMultiChannelMode(true);
@@ -259,21 +268,47 @@ export function useVideoGeneration() {
 
         // Add to completed videos
         if (result && result.hookVideo) {
-          setCompletedMultiChannelVideos(prev => [
-            ...prev,
-            {
-              channelId: channel.id,
-              channelName: channel.name,
-              channelNickname: channel.nickname,
-              channelImageUrl: channel.image_url,
-              title: channelScript.hook,
-              videoUrl: result.hookVideo
-            }
-          ]);
+          const newVideo = {
+            channelId: channel.id,
+            channelName: channel.name,
+            channelNickname: channel.nickname,
+            channelImageUrl: channel.image_url,
+            title: channelScript.hook,
+            videoUrl: result.hookVideo
+          };
+          
+          console.log('Adding completed video to list:', newVideo);
+          setCompletedMultiChannelVideos(prev => [...prev, newVideo]);
         }
         
         // Update video status to completed
         await updateVideoStatus(videoData.id, 'video_complete');
+        
+        // If this is not the last channel, prepare for the next one
+        if (i < channelScripts.length - 1) {
+          // Short delay before moving to the next channel
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Update current channel index for the progress modal
+          setCurrentChannelIndex(i + 1);
+          
+          // Get the next channel
+          const nextChannelScript = channelScripts[i + 1];
+          const nextChannel = channels.find(c => c.id === nextChannelScript.channelId);
+          
+          if (nextChannel) {
+            // Update current channel info for the progress modal
+            setCurrentChannelName(nextChannel.nickname 
+              ? `${nextChannel.nickname} (${nextChannel.name})` 
+              : nextChannel.name);
+            setCurrentChannelImage(nextChannel.image_url);
+          }
+          
+          // Reset steps for the next channel
+          resetSteps();
+          
+          console.log(`Moving to next channel (${i + 1}/${channelScripts.length})`);
+        }
       } catch (error: any) {
         console.error(`Error generating video for channel ${channel.name}:`, error);
         // Find the first processing step and mark it as error
@@ -292,27 +327,34 @@ export function useVideoGeneration() {
         // Wait a moment before continuing to the next channel
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
-    }
-
-    // All videos processed
-    setIsGenerating(false);
-    setIsProgressModalOpen(false);
-    
-    // Show completed videos dialog if we have any successful generations
-    if (completedMultiChannelVideos.length > 0) {
-      setIsMultiChannelCompletedDialogOpen(true);
-      toast({
-        title: "Video generation completed",
-        description: `Generated ${completedMultiChannelVideos.length} out of ${channelScripts.length} videos successfully.`,
-        duration: 3000,
-      });
-    } else {
-      toast({
-        title: "Video generation failed",
-        description: "Failed to generate any videos. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
+      
+      // Check if this is the last channel
+      if (i === channelScripts.length - 1) {
+        console.log('Last channel processed');
+        setIsGenerating(false);
+        setIsProgressModalOpen(false);
+        
+        // Show completed videos dialog if we have any successful generations
+        if (completedMultiChannelVideos.length > 0) {
+          console.log('Showing completed dialog with videos:', completedMultiChannelVideos);
+          
+          // Show the completed dialog
+          setIsMultiChannelCompletedDialogOpen(true);
+          
+          toast({
+            title: "Video generation completed",
+            description: `Generated ${completedMultiChannelVideos.length} out of ${channelScripts.length} videos successfully.`,
+            duration: 3000,
+          });
+        } else {
+          toast({
+            title: "Video generation failed",
+            description: "Failed to generate any videos. Please try again.",
+            variant: "destructive",
+            duration: 3000,
+          });
+        }
+      }
     }
   };
 
@@ -323,6 +365,8 @@ export function useVideoGeneration() {
     apiKey: string,
     settings: any
   ) => {
+    console.log(`Starting video generation for channel: ${channel.name}`);
+    
     // Check if we have a voice model
     if (!elevenlabsVoiceModel) {
       throw new Error('Voice model not found. Please configure it in Settings.');
@@ -332,6 +376,40 @@ export function useVideoGeneration() {
       throw new Error('User not authenticated');
     }
 
+    // Set up a fallback timer to advance steps if server updates are missed
+    let currentStep = 'audio';
+    const stepTimeouts: Record<string, NodeJS.Timeout> = {};
+    
+    const setupStepFallback = (step: string, nextStep: string, timeoutMs: number) => {
+      // Clear any existing timeout for this step
+      if (stepTimeouts[step]) {
+        clearTimeout(stepTimeouts[step]);
+      }
+      
+      // Set a new timeout
+      stepTimeouts[step] = setTimeout(() => {
+        const steps = generationSteps.find(s => s.id === step);
+        // Only advance if the step is still processing
+        if (steps && steps.status === 'processing') {
+          console.log(`Fallback: Advancing from ${step} to ${nextStep} after timeout`);
+          updateStepStatus(step, 'completed');
+          updateStepStatus(nextStep, 'processing');
+          currentStep = nextStep;
+          
+          // Set up the next fallback
+          if (nextStep === 'transcription') {
+            setupStepFallback('transcription', 'video', 60000); // 1 minute for transcription
+          } else if (nextStep === 'video') {
+            setupStepFallback('video', 'complete', 180000); // 3 minutes for video generation
+          }
+        }
+      }, timeoutMs);
+    };
+    
+    // Set up the first fallback for audio processing
+    setupStepFallback('audio', 'transcription', 60000); // 1 minute for audio processing
+
+    console.log('Making API request to generate video');
     const response = await fetch(`${API_URL}/api/generate-video`, {
       method: 'POST',
       headers: {
@@ -367,6 +445,7 @@ export function useVideoGeneration() {
       throw new Error(`Server error: ${errorText}`);
     }
 
+    console.log('Received successful response from server, setting up stream reader');
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('Failed to get response reader');
@@ -380,10 +459,12 @@ export function useVideoGeneration() {
     let buffer = '';
 
     try {
+      console.log('Starting to read stream from server');
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) {
+          console.log('Stream ended');
           break;
         }
         
@@ -391,40 +472,68 @@ export function useVideoGeneration() {
         const chunk = new TextDecoder().decode(value);
         buffer += chunk;
         
-        // Split by newlines and process each line
-        const updates = buffer.split('\n');
+        // Split by double newlines (server sends \n\n between messages)
+        const updates = buffer.split('\n\n');
         buffer = updates.pop() || '';
+        
+        console.log(`Processing ${updates.length} updates from stream`);
         
         for (let i = 0; i < updates.length; i++) {
           const update = updates[i].trim();
           
-          if (!update || !update.startsWith('data:')) {
+          if (!update) {
             continue;
           }
           
           try {
-            const jsonStr = update.slice(5).trim();
-            const data = JSON.parse(jsonStr);
+            // Parse the JSON directly without expecting data: prefix
+            const data = JSON.parse(update);
+            
+            // Only process status_update type messages
+            if (data.type !== 'status_update') {
+              console.log('Received non-status update:', data);
+              continue;
+            }
+            
+            console.log('Received status update:', data.status);
             
             switch (data.status) {
               case 'audio_processing':
                 updateStepStatus('audio', 'processing');
+                currentStep = 'audio';
+                // Reset the fallback timer
+                setupStepFallback('audio', 'transcription', 60000);
                 break;
               
               case 'audio_complete':
                 console.log('Audio generation completed');
                 updateStepStatus('audio', 'completed');
                 updateStepStatus('transcription', 'processing');
+                currentStep = 'transcription';
+                // Clear audio timeout and set up transcription fallback
+                if (stepTimeouts['audio']) {
+                  clearTimeout(stepTimeouts['audio']);
+                }
+                setupStepFallback('transcription', 'video', 60000);
                 break;
               
               case 'transcription_processing':
                 updateStepStatus('transcription', 'processing');
+                currentStep = 'transcription';
+                // Reset the fallback timer
+                setupStepFallback('transcription', 'video', 60000);
                 break;
               
               case 'transcription_complete':
                 console.log('Transcription completed');
                 updateStepStatus('transcription', 'completed');
                 updateStepStatus('video', 'processing');
+                currentStep = 'video';
+                // Clear transcription timeout and set up video fallback
+                if (stepTimeouts['transcription']) {
+                  clearTimeout(stepTimeouts['transcription']);
+                }
+                setupStepFallback('video', 'complete', 180000);
                 break;
               
               case 'background_processing':
@@ -444,30 +553,48 @@ export function useVideoGeneration() {
               case 'video_complete':
                 console.log('Video generation completed');
                 updateStepStatus('video', 'completed');
-                if (!audioResult && data.hookAudio && data.scriptAudio) {
-                  audioResult = {
-                    hookAudio: data.hookAudio,
-                    scriptAudio: data.scriptAudio,
-                    hookVideo: data.hookVideo
-                  };
-                }
                 
-                // Only set completed video and show dialog in single channel mode
+                // Clear all timeouts
+                Object.keys(stepTimeouts).forEach(key => {
+                  if (stepTimeouts[key]) {
+                    clearTimeout(stepTimeouts[key]);
+                  }
+                });
+                
+                // Store audio and video URLs
+                const videoResult = {
+                  hookAudio: data.hookAudio || '',
+                  scriptAudio: data.scriptAudio || '',
+                  hookVideo: data.hookVideo || ''
+                };
+                
+                // Update audioResult for return value
+                audioResult = videoResult;
+                
+                // Add video to completed videos list
+                const newCompletedVideo = {
+                  channelId: channel.id,
+                  channelName: channel.name,
+                  channelNickname: channel.nickname,
+                  channelImageUrl: channel.image_url,
+                  title: hookText,
+                  videoUrl: data.hookVideo
+                };
+                
+                console.log('Adding video to completed list:', newCompletedVideo);
+                
+                // For single-channel mode, we'll show the dialog immediately
                 if (!isMultiChannelMode) {
-                  // Set completed video data
-                  setCompletedVideo({
-                    hookVideo: data.hookVideo,
-                    hookAudio: data.hookAudio,
-                    scriptAudio: data.scriptAudio,
-                    subtitle_size: data.subtitle_size,
-                    stroke_size: data.stroke_size,
-                    has_background_music: data.has_background_music,
-                    channelName: channel.name,
-                    channelNickname: data.channelNickname
-                  });
-                  // Close progress modal and open completed video dialog
+                  // Add to multi-channel videos array for the dialog
+                  setCompletedMultiChannelVideos([newCompletedVideo]);
+                  
+                  // Close progress modal and open completed dialog
                   setIsProgressModalOpen(false);
-                  setIsCompletedVideoDialogOpen(true);
+                  setIsMultiChannelCompletedDialogOpen(true);
+                } else {
+                  // For multi-channel mode, just add to completed videos
+                  // Don't close the progress modal or show any dialog yet
+                  setCompletedMultiChannelVideos(prev => [...prev, newCompletedVideo]);
                 }
                 break;
               
@@ -482,20 +609,38 @@ export function useVideoGeneration() {
       }
     } finally {
       reader.releaseLock();
+      
+      // Clean up any remaining timeouts
+      Object.keys(stepTimeouts).forEach(key => {
+        if (stepTimeouts[key]) {
+          clearTimeout(stepTimeouts[key]);
+        }
+      });
     }
     
     return audioResult;
   };
 
+  // Add useEffect to monitor completedMultiChannelVideos
+  useEffect(() => {
+    // Only proceed if we have completed videos and we're not generating
+    if (completedMultiChannelVideos.length > 0 && !isGenerating) {
+      console.log('useEffect: Detected completed videos:', completedMultiChannelVideos.length);
+      
+      // If we're not showing the dialog and we're not generating, show it
+      if (!isMultiChannelCompletedDialogOpen && !isProgressModalOpen) {
+        console.log('useEffect: Opening completed dialog');
+        setIsMultiChannelCompletedDialogOpen(true);
+      }
+    }
+  }, [completedMultiChannelVideos, isGenerating, isMultiChannelCompletedDialogOpen, isProgressModalOpen]);
+
   return {
     isGenerating,
-    completedVideo,
     generationSteps,
     generateVideo,
     isProgressModalOpen,
     setIsProgressModalOpen,
-    isCompletedVideoDialogOpen,
-    setIsCompletedVideoDialogOpen,
     // New multi-channel properties
     generateMultiChannelVideos,
     isMultiChannelMode,
