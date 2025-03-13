@@ -213,12 +213,16 @@ export function useVideoGeneration() {
 
     setIsGenerating(true);
     setAudioResult(null);
+    // Clear any existing completed videos
     setCompletedMultiChannelVideos([]);
     setIsProgressModalOpen(true);
     setIsMultiChannelMode(true);
     setCurrentChannelIndex(0);
     setTotalChannels(channelScripts.length);
     resetSteps();
+
+    // Track completed videos locally to prevent duplicates
+    const completedVideos: CompletedMultiChannelVideo[] = [];
 
     // Process each channel one by one
     for (let i = 0; i < channelScripts.length; i++) {
@@ -277,8 +281,19 @@ export function useVideoGeneration() {
             videoUrl: result.hookVideo
           };
           
-          console.log('Adding completed video to list:', newVideo);
-          setCompletedMultiChannelVideos(prev => [...prev, newVideo]);
+          console.log('Adding completed video to local list:', newVideo);
+          
+          // Check if this channel already has a video in the completed list
+          const existingVideoIndex = completedVideos.findIndex(v => v.channelId === channel.id);
+          
+          if (existingVideoIndex >= 0) {
+            // Replace the existing video
+            console.log('Replacing existing video for channel:', channel.name);
+            completedVideos[existingVideoIndex] = newVideo;
+          } else {
+            // Add as a new video
+            completedVideos.push(newVideo);
+          }
         }
         
         // Update video status to completed
@@ -335,15 +350,29 @@ export function useVideoGeneration() {
         setIsProgressModalOpen(false);
         
         // Show completed videos dialog if we have any successful generations
-        if (completedMultiChannelVideos.length > 0) {
-          console.log('Showing completed dialog with videos:', completedMultiChannelVideos);
+        if (completedVideos.length > 0) {
+          console.log('All videos completed. Showing completed dialog with videos:', completedVideos);
           
-          // Show the completed dialog
+          // Ensure no duplicate videos by using a Map with channelId as key
+          const uniqueVideosMap = new Map();
+          completedVideos.forEach(video => {
+            uniqueVideosMap.set(video.channelId, video);
+          });
+          
+          // Convert Map back to array
+          const uniqueVideos = Array.from(uniqueVideosMap.values());
+          
+          console.log('Filtered to unique videos:', uniqueVideos.length);
+          
+          // Update the state with all unique completed videos at once
+          setCompletedMultiChannelVideos(uniqueVideos);
+          
+          // Only now show the completed dialog
           setIsMultiChannelCompletedDialogOpen(true);
           
           toast({
             title: "Video generation completed",
-            description: `Generated ${completedMultiChannelVideos.length} out of ${channelScripts.length} videos successfully.`,
+            description: `Generated ${uniqueVideos.length} out of ${channelScripts.length} videos successfully.`,
             duration: 3000,
           });
         } else {
@@ -586,15 +615,28 @@ export function useVideoGeneration() {
                 // For single-channel mode, we'll show the dialog immediately
                 if (!isMultiChannelMode) {
                   // Add to multi-channel videos array for the dialog
-                  setCompletedMultiChannelVideos([newCompletedVideo]);
+                  // Ensure we don't have duplicates by checking if we already have a video for this channel
+                  setCompletedMultiChannelVideos(prev => {
+                    const existingIndex = prev.findIndex(v => v.channelId === channel.id);
+                    if (existingIndex >= 0) {
+                      // Replace the existing video
+                      const newArray = [...prev];
+                      newArray[existingIndex] = newCompletedVideo;
+                      return newArray;
+                    } else {
+                      // Add as a new video
+                      return [newCompletedVideo];
+                    }
+                  });
                   
                   // Close progress modal and open completed dialog
                   setIsProgressModalOpen(false);
                   setIsMultiChannelCompletedDialogOpen(true);
                 } else {
-                  // For multi-channel mode, just add to completed videos
-                  // Don't close the progress modal or show any dialog yet
-                  setCompletedMultiChannelVideos(prev => [...prev, newCompletedVideo]);
+                  // For multi-channel mode, we don't add the video here
+                  // It's already added in the generateMultiChannelVideos function
+                  // This prevents duplicate videos
+                  console.log('In multi-channel mode, video already added in main function');
                 }
                 break;
               
@@ -621,19 +663,36 @@ export function useVideoGeneration() {
     return audioResult;
   };
 
-  // Add useEffect to monitor completedMultiChannelVideos
+  // Remove or modify this useEffect to prevent premature dialog opening
   useEffect(() => {
     // Only proceed if we have completed videos and we're not generating
-    if (completedMultiChannelVideos.length > 0 && !isGenerating) {
-      console.log('useEffect: Detected completed videos:', completedMultiChannelVideos.length);
+    // AND we're not in multi-channel mode (this is key)
+    if (completedMultiChannelVideos.length > 0 && !isGenerating && !isMultiChannelMode) {
+      console.log('useEffect: Detected completed videos in single-channel mode:', completedMultiChannelVideos.length);
       
       // If we're not showing the dialog and we're not generating, show it
       if (!isMultiChannelCompletedDialogOpen && !isProgressModalOpen) {
-        console.log('useEffect: Opening completed dialog');
+        console.log('useEffect: Opening completed dialog for single-channel mode');
         setIsMultiChannelCompletedDialogOpen(true);
       }
     }
-  }, [completedMultiChannelVideos, isGenerating, isMultiChannelCompletedDialogOpen, isProgressModalOpen]);
+  }, [completedMultiChannelVideos, isGenerating, isMultiChannelCompletedDialogOpen, isProgressModalOpen, isMultiChannelMode]);
+
+  // Function to handle dialog close
+  const handleCompletedDialogClose = (open: boolean) => {
+    console.log('handleCompletedDialogClose called with:', open);
+    
+    // If dialog is closed, clear the completed videos and reset state
+    if (!open) {
+      console.log('Dialog closed, clearing completed videos and resetting state');
+      setCompletedMultiChannelVideos([]);
+      // Reset any other relevant state here
+      setIsMultiChannelMode(false);
+    }
+    
+    // Update the dialog open state
+    setIsMultiChannelCompletedDialogOpen(open);
+  };
 
   return {
     isGenerating,
@@ -646,7 +705,7 @@ export function useVideoGeneration() {
     isMultiChannelMode,
     completedMultiChannelVideos,
     isMultiChannelCompletedDialogOpen,
-    setIsMultiChannelCompletedDialogOpen,
+    setIsMultiChannelCompletedDialogOpen: handleCompletedDialogClose,
     currentChannelIndex,
     totalChannels,
     currentChannelName,

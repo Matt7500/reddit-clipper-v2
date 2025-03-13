@@ -254,7 +254,10 @@ const Index = () => {
       {/* Completed dialog for both single and multi-channel modes */}
       <MultiChannelCompletedDialog
         isOpen={isMultiChannelCompletedDialogOpen}
-        onOpenChange={setIsMultiChannelCompletedDialogOpen}
+        onOpenChange={(open) => {
+          console.log('Index: MultiChannelCompletedDialog onOpenChange called with:', open);
+          setIsMultiChannelCompletedDialogOpen(open);
+        }}
         videos={completedMultiChannelVideos}
         apiUrl={API_URL}
       />

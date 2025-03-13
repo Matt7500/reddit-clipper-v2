@@ -1,9 +1,44 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { 
+  Dialog, 
+  DialogContent as BaseDialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription,
+  DialogClose 
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Copy, Check, Download, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as React from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+
+// Custom DialogContent with styled close button
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPrimitive.Portal>
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <DialogPrimitive.Content
+      ref={ref}
+      className={cn(
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        "sm:max-w-[900px] max-h-[90vh] overflow-y-auto bg-zinc-900 text-white border-zinc-700",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm text-white hover:bg-white/10 focus:outline-none disabled:pointer-events-none">
+        <X className="h-5 w-5" />
+        <span className="sr-only">Close</span>
+      </DialogPrimitive.Close>
+    </DialogPrimitive.Content>
+  </DialogPrimitive.Portal>
+));
+DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 interface VideoData {
   channelId: string;
@@ -31,14 +66,38 @@ export function MultiChannelCompletedDialog({
   const [copiedTitles, setCopiedTitles] = useState<Record<string, boolean>>({});
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
 
+  // Filter out duplicate videos by channelId
+  const uniqueVideos = useMemo(() => {
+    const uniqueMap = new Map<string, VideoData>();
+    videos.forEach(video => {
+      uniqueMap.set(video.channelId, video);
+    });
+    return Array.from(uniqueMap.values());
+  }, [videos]);
+
   // Add debugging
-  console.log('MultiChannelCompletedDialog rendered with:', { isOpen, videos });
+  console.log('MultiChannelCompletedDialog rendered with:', { isOpen, videos, uniqueVideos });
 
   useEffect(() => {
-    if (isOpen && videos.length > 0) {
-      console.log('MultiChannelCompletedDialog opened with videos:', videos);
+    if (isOpen && uniqueVideos.length > 0) {
+      console.log('MultiChannelCompletedDialog opened with videos:', uniqueVideos);
     }
-  }, [isOpen, videos]);
+  }, [isOpen, uniqueVideos]);
+
+  // Handle dialog close
+  const handleDialogChange = (open: boolean) => {
+    console.log('MultiChannelCompletedDialog: handleDialogChange called with:', open);
+    
+    // If closing, reset selected video
+    if (!open) {
+      console.log('MultiChannelCompletedDialog: Closing dialog, resetting selected video');
+      setSelectedVideo(null);
+    }
+    
+    // Call the parent's onOpenChange with explicit false when closing
+    console.log('MultiChannelCompletedDialog: Calling parent onOpenChange with:', open);
+    onOpenChange(open);
+  };
 
   const handleCopyTitle = async (video: VideoData) => {
     if (!video.title) return;
@@ -121,23 +180,28 @@ export function MultiChannelCompletedDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent 
-        className={cn(
-          "sm:max-w-[900px] max-h-[90vh] overflow-y-auto",
-          "bg-zinc-900 text-white border-zinc-700 p-6"
-        )}
-      >
+    <Dialog 
+      open={isOpen} 
+      onOpenChange={(open) => {
+        console.log('Dialog component onOpenChange called with:', open);
+        // Reset selected video when dialog is closed
+        if (!open && selectedVideo) {
+          setSelectedVideo(null);
+        }
+        handleDialogChange(open);
+      }}
+    >
+      <DialogContent className="p-6">
         <DialogHeader className="space-y-1.5">
           <div className="text-center">
             <DialogTitle className="text-xl font-semibold">
-              {videos.length > 1 
+              {uniqueVideos.length > 1 
                 ? "Videos Generated Successfully" 
                 : "Video Generated Successfully"}
             </DialogTitle>
             <DialogDescription className="text-zinc-400 mt-1.5">
-              {videos.length > 1 
-                ? `${videos.length} videos have been generated for your channels` 
+              {uniqueVideos.length > 1 
+                ? `${uniqueVideos.length} videos have been generated for your channels` 
                 : "Your video has been generated and is ready to be downloaded"}
             </DialogDescription>
           </div>
@@ -214,7 +278,7 @@ export function MultiChannelCompletedDialog({
           </div>
         ) : (
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {videos.map((video) => (
+            {uniqueVideos.map((video) => (
               <div 
                 key={video.channelId}
                 className="border border-white/10 rounded-lg p-4 bg-[#2A2A2A] hover:bg-[#333333] transition-colors cursor-pointer"
