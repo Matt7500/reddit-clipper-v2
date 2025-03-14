@@ -316,7 +316,7 @@ export function MultiChannelScriptModal({
       <DialogContent 
         className={cn(
           "bg-[#222222] text-white border border-white/10 p-6",
-          "sm:max-w-[1000px] max-h-[90vh] overflow-hidden flex flex-col",
+          "sm:max-w-[1000px] max-h-[90vh] h-[90vh] overflow-hidden flex flex-col",
           "hide-close-button",
           isClosing && "dialog-closing"
         )}
@@ -335,6 +335,30 @@ export function MultiChannelScriptModal({
           /* Target by position - most Dialog close buttons are positioned absolutely in the top-right */
           .hide-close-button button[type="button"][class*="absolute"][class*="right"] {
             display: none !important;
+          }
+          
+          /* Custom scrollbar styles */
+          textarea::-webkit-scrollbar {
+            width: 6px;
+          }
+          
+          textarea::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          
+          textarea::-webkit-scrollbar-thumb {
+            background-color: #444444;
+            border-radius: 3px;
+          }
+          
+          textarea::-webkit-scrollbar-corner {
+            background: transparent;
+          }
+          
+          /* Firefox scrollbar */
+          textarea {
+            scrollbar-width: thin;
+            scrollbar-color: #444444 transparent;
           }
           
           /* Animation styles */
@@ -500,7 +524,7 @@ export function MultiChannelScriptModal({
                 
                 return (
                   <TabsContent key={channel.id} value={channel.id} className="mt-0 h-full">
-                    <div className="border border-white/10 rounded-lg p-4 bg-[#2A2A2A] h-full">
+                    <div className="border border-white/10 rounded-lg p-4 bg-[#2A2A2A] h-full flex flex-col">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full overflow-hidden border border-white/10 bg-[#1A1A1A] flex items-center justify-center">
@@ -562,9 +586,9 @@ export function MultiChannelScriptModal({
                         </div>
                       )}
                       
-                      <div className="space-y-3">
-                        <div className="grid gap-2">
-                          <div className="flex justify-between items-center">
+                      <div className="flex-1 flex flex-col h-full space-y-3">
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
                             <Label className="text-white text-base font-medium">Title/Hook</Label>
                             <p className="text-xs text-muted-foreground">
                               {channelScript.hook.trim() ? channelScript.hook.trim().split(/\s+/).length : 0} words
@@ -580,8 +604,8 @@ export function MultiChannelScriptModal({
                           />
                         </div>
                         
-                        <div className="grid gap-2">
-                          <div className="flex justify-between items-center">
+                        <div className="flex-1 flex flex-col min-h-0">
+                          <div className="flex justify-between items-center mb-2">
                             <Label className="text-white text-base font-medium">Script</Label>
                             <p className="text-xs text-muted-foreground">
                               {channelScript.script.trim() ? channelScript.script.trim().split(/\s+/).length : 0} words
@@ -591,7 +615,7 @@ export function MultiChannelScriptModal({
                             placeholder="Write your script here..."
                             value={channelScript.script}
                             onChange={(e) => handleScriptChange(channel.id, e.target.value)}
-                            className="min-h-[350px] bg-[#333333] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors"
+                            className="flex-1 bg-[#333333] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors h-full"
                             style={{ fontSize: '16px' }}
                             disabled={isGenerating}
                           />
