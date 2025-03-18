@@ -1,6 +1,7 @@
 import { useCurrentFrame, interpolate, Easing } from 'remotion';
 import React, { useEffect } from 'react';
 import jelleeFont from '../../assets/fonts/Jellee-Roman.ttf';
+import robotoFont from '../../assets/Roboto-Bold.ttf';
 
 interface Props {
   text: string;
@@ -55,6 +56,17 @@ export const SubtitleCard: React.FC<Props> = ({
       console.error('Error loading Jellee font:', error);
     });
   }, []);
+  
+  // Load Roboto font as another fallback
+  useEffect(() => {
+    const robotoFontFace = new FontFace('Roboto', `url(${robotoFont})`);
+    robotoFontFace.load().then((loadedFace) => {
+      (document.fonts as any).add(loadedFace);
+      console.log('Roboto font loaded in SubtitleCard');
+    }).catch((error) => {
+      console.error('Error loading Roboto font:', error);
+    });
+  }, []);
 
   // Pop animation timing
   const popInDuration = 6; // frames
@@ -76,7 +88,7 @@ export const SubtitleCard: React.FC<Props> = ({
   }
 
   // Get the color from our map or default to white
-  const textColor = colorMap[color] || colorMap.white;
+  const textColor = colorMap[color as keyof typeof colorMap] || colorMap.white;
 
   return (
     <div style={{

@@ -44,6 +44,15 @@ interface Props {
   backgroundVideoPath: string[] | VideoInfo[] | string;
   has_background_music?: boolean;
   backgroundMusicUrl?: string;
+  
+  // Asset URLs for HookVideo
+  assetUrls?: {
+    badge?: string;
+    bubble?: string;
+    share?: string;
+    frames?: Record<string, string>;
+    videos?: Record<string, string>;
+  };
 }
 
 export const MainComposition: React.FC<Props> = ({
@@ -72,6 +81,9 @@ export const MainComposition: React.FC<Props> = ({
   backgroundVideoPath,
   has_background_music = false,
   backgroundMusicUrl = "",
+  
+  // Asset URLs
+  assetUrls = {},
 }) => {
   const { fps } = useVideoConfig();
   const scriptDurationInFrames = Math.ceil(scriptAudioDurationInSeconds * fps);
@@ -110,6 +122,7 @@ export const MainComposition: React.FC<Props> = ({
             hookText={hookText}
             audioUrl={audioUrl}
             audioDurationInSeconds={audioDurationInSeconds}
+            assetUrls={assetUrls}
           />
         </Series.Sequence>
         <Series.Sequence durationInFrames={scriptDurationInFrames}>

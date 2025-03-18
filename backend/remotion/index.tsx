@@ -27,7 +27,14 @@ const schema = z.object({
       durationInFrames: z.number(),
       durationInSeconds: z.number().optional()
     }))
-  ])
+  ]),
+  assetUrls: z.object({
+    badge: z.string().optional(),
+    bubble: z.string().optional(),
+    share: z.string().optional(),
+    frames: z.record(z.string()).optional(),
+    videos: z.record(z.string()).optional()
+  }).optional()
 });
 
 type Props = z.infer<typeof schema>;

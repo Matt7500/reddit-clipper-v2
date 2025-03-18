@@ -1,18 +1,15 @@
-import { useCurrentFrame, interpolate, Easing, Video, Audio, useVideoConfig } from 'remotion';
+import { useCurrentFrame, interpolate, Easing, Audio, useVideoConfig } from 'remotion';
 import React from 'react';
-import { loadFont } from "@remotion/google-fonts/Roboto";
+// Remove Google Fonts import
+// import { loadFont } from "@remotion/google-fonts/Roboto";
+// Import local Roboto font instead
+import robotoFont from '../../assets/Roboto-Bold.ttf';
 
 // We'll use these imports as fallbacks for local rendering
 import verificationBadge from '../../assets/badge.png';
 import bubble from '../../assets/bubble.svg';
 import share from '../../assets/share.svg';
-import video1 from '../../assets/videos/1.mp4';
-import video2 from '../../assets/videos/2.mp4';
-import video3 from '../../assets/videos/3.mp4';
-import video4 from '../../assets/videos/4.mp4';
-import video5 from '../../assets/videos/5.mp4';
-import video6 from '../../assets/videos/6.mp4';
-// Import static first frames
+// Keep frame imports for static images
 import frame1 from '../../assets/videos/frames/1.jpg';
 import frame2 from '../../assets/videos/frames/2.jpg';
 import frame3 from '../../assets/videos/frames/3.jpg';
@@ -20,7 +17,19 @@ import frame4 from '../../assets/videos/frames/4.jpg';
 import frame5 from '../../assets/videos/frames/5.jpg';
 import frame6 from '../../assets/videos/frames/6.jpg';
 
-const { fontFamily } = loadFont();
+// Import video sources
+import video1 from '../../assets/videos/1.mp4';
+import video2 from '../../assets/videos/2.mp4';
+import video3 from '../../assets/videos/3.mp4';
+import video4 from '../../assets/videos/4.mp4';
+import video5 from '../../assets/videos/5.mp4';
+import video6 from '../../assets/videos/6.mp4';
+
+// Replace Google Fonts loading with a constant
+const fontFamily = 'Roboto';
+
+// Load font in component instead (see HookVideo component below)
+// const { fontFamily } = loadFont();
 
 interface Props {
   channelName?: string;
@@ -33,30 +42,23 @@ interface Props {
     badge?: string;
     bubble?: string;
     share?: string;
-    videos?: Record<string, string>;
     frames?: Record<string, string>;
+    videos?: Record<string, string>;
   };
 }
-
-const VideoComponent: React.FC<{
-  src: string;
-  placeholder: string;
-  style: React.CSSProperties;
-}> = ({ src, placeholder, style }) => {
-  return (
-    <Video
-      src={src}
-      style={{
-        ...style,
-      }}
-    />
-  );
-};
 
 // Helper function to get asset URL or fallback to local import
 const getAssetUrl = (assetUrls: any, key: string, fallback: any) => {
   if (assetUrls && assetUrls[key]) {
     return assetUrls[key];
+  }
+  return fallback;
+};
+
+// Helper function to get frame URL
+const getFrameUrl = (assetUrls: any, index: number, fallback: any) => {
+  if (assetUrls && assetUrls.frames && assetUrls.frames[`frame${index}`]) {
+    return assetUrls.frames[`frame${index}`];
   }
   return fallback;
 };
@@ -69,12 +71,34 @@ const getVideoUrl = (assetUrls: any, index: number, fallback: any) => {
   return fallback;
 };
 
-// Helper function to get frame URL
-const getFrameUrl = (assetUrls: any, index: number, fallback: any) => {
-  if (assetUrls && assetUrls.frames && assetUrls.frames[`frame${index}`]) {
-    return assetUrls.frames[`frame${index}`];
+// Replace the VideoComponent with a simpler version that just uses static images
+// This will ensure the render process completes while we troubleshoot the video loading issues
+const VideoComponent: React.FC<{
+  src: string;
+  style: React.CSSProperties;
+  alt?: string;
+  index: number;
+}> = ({ src, style, alt = 'Video', index }) => {
+  // Simply use the corresponding static frame directly
+  let fallbackFrame;
+  switch (index) {
+    case 1: fallbackFrame = frame1; break;
+    case 2: fallbackFrame = frame2; break;
+    case 3: fallbackFrame = frame3; break;
+    case 4: fallbackFrame = frame4; break;
+    case 5: fallbackFrame = frame5; break;
+    case 6: fallbackFrame = frame6; break;
+    default: fallbackFrame = frame1;
   }
-  return fallback;
+
+  // For now, just use the static images to ensure rendering completes
+  return (
+    <img
+      src={fallbackFrame}
+      style={style}
+      alt={alt}
+    />
+  );
 };
 
 export const HookVideo: React.FC<Props> = ({
@@ -88,6 +112,17 @@ export const HookVideo: React.FC<Props> = ({
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   
+  // Load the Roboto font when the component mounts
+  React.useEffect(() => {
+    const customFontFace = new FontFace('Roboto', `url(${robotoFont})`);
+    customFontFace.load().then((loadedFace) => {
+      (document.fonts as any).add(loadedFace);
+      console.log('Roboto font loaded from local assets');
+    }).catch((error) => {
+      console.error('Error loading Roboto font:', error);
+    });
+  }, []);
+  
   // Choose a random video based on the hook text (deterministic)
   const getVideoIndex = () => {
     if (!hookText) return 1;
@@ -99,38 +134,30 @@ export const HookVideo: React.FC<Props> = ({
   
   const videoIndex = getVideoIndex();
   
-  // Get video and frame URLs based on the index
+  // Get video URL based on the index
   let videoSrc;
-  let frameSrc;
   
   switch (videoIndex) {
     case 1:
       videoSrc = getVideoUrl(assetUrls, 1, video1);
-      frameSrc = getFrameUrl(assetUrls, 1, frame1);
       break;
     case 2:
       videoSrc = getVideoUrl(assetUrls, 2, video2);
-      frameSrc = getFrameUrl(assetUrls, 2, frame2);
       break;
     case 3:
       videoSrc = getVideoUrl(assetUrls, 3, video3);
-      frameSrc = getFrameUrl(assetUrls, 3, frame3);
       break;
     case 4:
       videoSrc = getVideoUrl(assetUrls, 4, video4);
-      frameSrc = getFrameUrl(assetUrls, 4, frame4);
       break;
     case 5:
       videoSrc = getVideoUrl(assetUrls, 5, video5);
-      frameSrc = getFrameUrl(assetUrls, 5, frame5);
       break;
     case 6:
       videoSrc = getVideoUrl(assetUrls, 6, video6);
-      frameSrc = getFrameUrl(assetUrls, 6, frame6);
       break;
     default:
       videoSrc = getVideoUrl(assetUrls, 1, video1);
-      frameSrc = getFrameUrl(assetUrls, 1, frame1);
   }
   
   // Get other asset URLs
@@ -374,12 +401,21 @@ export const HookVideo: React.FC<Props> = ({
               <img src={badgeUrl} style={badgeStyle} alt="Verified" />
             </div>
             <div style={gifContainerStyle}>
-              <VideoComponent src={video1} placeholder={frame1} style={gifStyle} />
-              <VideoComponent src={video2} placeholder={frame2} style={gifStyle} />
-              <VideoComponent src={video3} placeholder={frame3} style={gifStyle} />
-              <VideoComponent src={video4} placeholder={frame4} style={gifStyle} />
-              <VideoComponent src={video5} placeholder={frame5} style={gifStyle} />
-              <VideoComponent src={video6} placeholder={frame6} style={gifStyle} />
+              {[1, 2, 3, 4, 5, 6].map(idx => (
+                <VideoComponent
+                  key={idx}
+                  src={getVideoUrl(assetUrls, idx, 
+                    idx === 1 ? video1 :
+                    idx === 2 ? video2 :
+                    idx === 3 ? video3 :
+                    idx === 4 ? video4 :
+                    idx === 5 ? video5 : video6
+                  )}
+                  style={gifStyle}
+                  alt={`Video ${idx}`}
+                  index={idx}
+                />
+              ))}
             </div>
           </div>
         </div>

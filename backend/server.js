@@ -8,6 +8,17 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { bundle } from '@remotion/bundler';
 import { getCompositions, renderMedia } from '@remotion/renderer';
+import { 
+  deploySite, 
+  deleteSite, 
+  renderMediaOnLambda, 
+  getFunctions,
+  deployFunction,
+  getOrCreateBucket,
+  getSites
+} from '@remotion/lambda';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ElevenLabsClient } from "elevenlabs";
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -64,6 +75,281 @@ const __dirname = path.dirname(__filename);
 
 // Initialize dotenv
 dotenv.config();
+
+// AWS Configuration
+const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
+
+if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+  console.warn('AWS credentials not found. Lambda rendering will not work.');
+}
+
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: AWS_REGION,
+  credentials: {
+    accessKeyId: AWS_ACCESS_KEY_ID,
+    secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+// Lambda configuration
+const LAMBDA_MEMORY_SIZE = 10240; // 10GB RAM
+const LAMBDA_TIMEOUT = 300; // 5 minutes
+
+// Store the bucket name returned by getOrCreateBucket
+let remotionBucketName = null;
+
+// Function to initialize Lambda (deploy function and site)
+let remotionFunction = null;
+let remotionSite = null;
+const SITE_NAME = 'reddit-clipper-production-site';
+
+const initializeLambda = async () => {
+  try {
+    console.log('Initializing Lambda with params:', {
+      region: AWS_REGION,
+      timeout: LAMBDA_TIMEOUT,
+      memory: LAMBDA_MEMORY_SIZE
+    });
+    
+    // Make sure bucket exists and get the Remotion-managed bucket name
+    console.log('Getting or creating Remotion S3 bucket...');
+    const bucketResult = await getOrCreateBucket({
+      region: AWS_REGION,
+      accessKeyId: AWS_ACCESS_KEY_ID,
+      secretAccessKey: AWS_SECRET_ACCESS_KEY,
+    });
+    
+    // Log the entire bucket result for debugging
+    console.log('Bucket result:', JSON.stringify(bucketResult, null, 2));
+    
+    // Extract the bucket name from the result
+    remotionBucketName = bucketResult.bucketName;
+    
+    if (!remotionBucketName) {
+      throw new Error('Failed to retrieve bucket name from getOrCreateBucket()');
+    }
+    
+    console.log(`Using Remotion S3 bucket: ${remotionBucketName}`);
+    
+    // Check if function already exists
+    console.log('Checking for existing Lambda functions...');
+    const functions = await getFunctions({
+      region: AWS_REGION,
+      accessKeyId: AWS_ACCESS_KEY_ID,
+      secretAccessKey: AWS_SECRET_ACCESS_KEY,
+    });
+    
+    console.log(`Found ${functions.length} existing functions:`, 
+      functions.map(f => ({ name: f.functionName, createdAt: f.createdAt })));
+    
+    // Deploy function if it doesn't exist or needs updating
+    if (!functions.length || !remotionFunction) {
+      console.log('Deploying new Remotion Lambda function...');
+      remotionFunction = await deployFunction({
+        region: AWS_REGION,
+        accessKeyId: AWS_ACCESS_KEY_ID,
+        secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        timeoutInSeconds: LAMBDA_TIMEOUT,
+        memorySizeInMb: LAMBDA_MEMORY_SIZE,
+      });
+      console.log('Remotion Lambda function deployed:', JSON.stringify(remotionFunction, null, 2));
+    } else {
+      remotionFunction = functions[0];
+      console.log('Using existing Remotion Lambda function:', JSON.stringify(remotionFunction, null, 2));
+    }
+    
+    // Check if site already exists
+    console.log('Checking for existing Remotion sites...');
+    try {
+      const sites = await getSites({
+        region: AWS_REGION,
+        accessKeyId: AWS_ACCESS_KEY_ID,
+        secretAccessKey: AWS_SECRET_ACCESS_KEY,
+      });
+      
+      // Check if sites is an array
+      if (Array.isArray(sites)) {
+        console.log(`Found ${sites.length} existing sites:`, 
+          sites.map(s => ({ name: s.id, url: s.serveUrl })));
+        
+        // Look for our specific site
+        const existingSite = sites.find(s => s.id === SITE_NAME);
+        if (existingSite) {
+          console.log('Found existing site:', JSON.stringify(existingSite, null, 2));
+          remotionSite = existingSite;
+        }
+      } else {
+        console.log('Received sites in unexpected format:', sites);
+      }
+    } catch (siteError) {
+      console.error('Error getting existing sites:', siteError);
+      // Continue with site deployment
+    }
+    
+    // Check if site already exists or deploy a new one
+    if (!remotionSite) {
+      console.log('Bundling Remotion site code...');
+      console.time('bundle-time');
+      const bundleResult = await bundle(path.join(__dirname, 'remotion/index.tsx'));
+      console.timeEnd('bundle-time');
+      console.log('Bundle result:', JSON.stringify(bundleResult, null, 2));
+      
+      console.log('Deploying new Remotion site...');
+      console.time('deploy-site-time');
+      remotionSite = await deploySite({
+        siteName: SITE_NAME,
+        entryPoint: './remotion/index.tsx',
+        region: AWS_REGION,
+        accessKeyId: AWS_ACCESS_KEY_ID,
+        secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        bucketName: remotionBucketName
+      });
+      console.timeEnd('deploy-site-time');
+      console.log('Remotion site deployed:', JSON.stringify(remotionSite, null, 2));
+    } else {
+      console.log('Using existing Remotion site:', JSON.stringify(remotionSite, null, 2));
+    }
+    
+    return remotionFunction;
+  } catch (error) {
+    console.error('Error initializing Lambda:', error);
+    if (error.stack) {
+      console.error('Stack trace:', error.stack);
+    }
+    throw error;
+  }
+};
+
+// Function to upload file to S3 and get a signed URL
+const uploadToS3 = async (filePath, s3Key) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    const fileStream = fs.createReadStream(filePath);
+    const fileExtension = path.extname(filePath).toLowerCase();
+    
+    // Set the correct content type based on file extension
+    let contentType = 'application/octet-stream'; // default
+    if (fileExtension === '.mp4') {
+      contentType = 'video/mp4';
+    } else if (fileExtension === '.png') {
+      contentType = 'image/png';
+    } else if (fileExtension === '.jpg' || fileExtension === '.jpeg') {
+      contentType = 'image/jpeg';
+    } else if (fileExtension === '.svg') {
+      contentType = 'image/svg+xml';
+    } else if (fileExtension === '.ttf') {
+      contentType = 'font/ttf';
+    } else if (fileExtension === '.woff') {
+      contentType = 'font/woff';
+    } else if (fileExtension === '.woff2') {
+      contentType = 'font/woff2';
+    }
+    
+    // Upload to S3 with the correct content type and ACL
+    const uploadParams = {
+      Bucket: remotionBucketName,
+      Key: s3Key,
+      Body: fileStream,
+      ContentType: contentType,
+      ACL: 'public-read' // Make the object publicly accessible
+    };
+    
+    const uploadResult = await s3Client.send(new PutObjectCommand(uploadParams));
+    
+    // Construct and return the S3 URL
+    const s3Url = `https://${remotionBucketName}.s3.${AWS_REGION}.amazonaws.com/${s3Key}`;
+    console.log(`File uploaded to S3: ${s3Url}`);
+    return s3Url;
+  } catch (error) {
+    console.error(`Error uploading to S3: ${error.message}`);
+    throw error;
+  }
+};
+
+// Function to upload a remote URL to S3
+const uploadRemoteUrlToS3 = async (url, s3Key) => {
+  try {
+    console.log(`Downloading from URL for S3 upload: ${url}`);
+    
+    // Download the file from the URL
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download from URL: ${response.statusText}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    const fileExtension = path.extname(s3Key).toLowerCase();
+    
+    // Set the correct content type based on file extension
+    let contentType = 'application/octet-stream'; // default
+    if (fileExtension === '.mp4') {
+      contentType = 'video/mp4';
+    } else if (fileExtension === '.png') {
+      contentType = 'image/png';
+    } else if (fileExtension === '.jpg' || fileExtension === '.jpeg') {
+      contentType = 'image/jpeg';
+    } else if (fileExtension === '.svg') {
+      contentType = 'image/svg+xml';
+    } else if (fileExtension === '.ttf') {
+      contentType = 'font/ttf';
+    } else if (fileExtension === '.woff') {
+      contentType = 'font/woff';
+    } else if (fileExtension === '.woff2') {
+      contentType = 'font/woff2';
+    }
+    
+    // Upload the buffer to S3 with the correct content type and ACL
+    const uploadParams = {
+      Bucket: remotionBucketName,
+      Key: s3Key,
+      Body: buffer,
+      ContentType: contentType,
+      ACL: 'public-read' // Make the object publicly accessible
+    };
+    
+    const uploadResult = await s3Client.send(new PutObjectCommand(uploadParams));
+    
+    // Construct and return the S3 URL
+    const s3Url = `https://${remotionBucketName}.s3.${AWS_REGION}.amazonaws.com/${s3Key}`;
+    console.log(`File uploaded to S3 from URL: ${s3Url}`);
+    return s3Url;
+  } catch (error) {
+    console.error(`Error uploading to S3 from URL: ${error.message}`);
+    throw error;
+  }
+};
+
+// Function to clean up S3 assets
+const cleanupS3Assets = async (s3Keys) => {
+  try {
+    if (!remotionBucketName) {
+      console.warn('Remotion bucket not initialized. Cannot clean up S3 assets.');
+      return;
+    }
+    
+    console.log(`Cleaning up ${s3Keys.length} assets from S3 bucket ${remotionBucketName}...`);
+    
+    for (const s3Key of s3Keys) {
+      const deleteCommand = new DeleteObjectCommand({
+        Bucket: remotionBucketName,
+        Key: s3Key,
+      });
+      
+      await s3Client.send(deleteCommand);
+      console.log(`Deleted S3 asset: ${s3Key}`);
+    }
+  } catch (error) {
+    console.error('Error cleaning up S3 assets:', error);
+  }
+};
 
 // In-memory cache for user settings
 const userSettingsCache = new Map();
@@ -941,13 +1227,27 @@ async function createBackgroundVideo(requiredDurationSeconds, background_video_t
   }
 }
 
-// Function to render hook video using Remotion
+// Function to render hook video using Remotion Lambda
 async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, openrouterApiKey = null, openrouterModel = null) {
   let isProcessComplete = false; // Add variable declaration
+  // Array to track S3 assets for cleanup
+  const s3Assets = [];
+  
+  // Define renderResponse variable at the top level of the function so it's available in the catch block
+  let renderResponse = null;
+  
   try {
-    console.log('Starting video generation process...');
+    console.log('Starting video generation process with Lambda...');
     console.log(`Using channel style: ${channelStyle}`);
     console.log(`Using font: ${font}`);
+    console.log(`Using font URL: ${fontUrl || "None provided"}`); // Log the fontUrl for debugging
+    
+    // Special handling for Roboto font - use the bundled version instead of Google Fonts
+    if (font === 'Roboto') {
+      console.log('USING BUNDLED ROBOTO FONT - will not attempt to download from Google Fonts');
+      // fontUrl will be null, which is fine - we will use the locally bundled font
+    }
+    
     console.log(`Background music enabled: ${has_background_music}`);
     
     // Get hook audio duration in frames (assuming 30fps)
@@ -960,17 +1260,6 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
 
     // Calculate total required duration
     const totalDurationInSeconds = hookDurationInSeconds + scriptDurationInSeconds;
-    
-    // Save script text to file for potential fallback use
-    // try {
-    //   if (!fs.existsSync(transcriptionsDir)) {
-    //     fs.mkdirSync(transcriptionsDir, { recursive: true });
-    //   }
-    //   fs.writeFileSync(path.join(transcriptionsDir, 'script_text.txt'), scriptText, 'utf8');
-    //   console.log('Script text saved for fallback use');
-    // } catch (saveError) {
-    //   console.error('Error saving script text for fallback:', saveError);
-    // }
     
     // Get word-level transcription with channel style
     console.log('Getting word-level transcription...');
@@ -1013,8 +1302,18 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       scriptDuration: scriptDurationInSeconds
     }) + '\n\n');
     
+    // Initialize Lambda if not already done
+    if (!remotionFunction) {
+      console.log('Initializing Lambda...');
+      await initializeLambda();
+    }
+    
+    if (!remotionBucketName) {
+      throw new Error('Failed to initialize Remotion bucket. Check AWS credentials.');
+    }
+    
     // Start video generation immediately after transcription
-    console.log('Starting video generation...');
+    console.log('Starting video generation with Lambda...');
     res.write(JSON.stringify({
       type: 'status_update',
       status: 'video_processing'
@@ -1024,15 +1323,62 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     const { videos, totalDurationInFrames } = await createBackgroundVideo(totalDurationInSeconds, background_video_type);
     console.log(`Background videos generated: ${videos.length} videos`);
     
-    // Add background videos to cleanup list
-    if (filesToCleanup) {
-      videos.forEach(videoInfo => {
-        const videoFileName = path.basename(videoInfo.path);
-        const backgroundVideoLocalPath = path.join(__dirname, 'public', 'videos', videoFileName);
-        if (fs.existsSync(backgroundVideoLocalPath)) {
-          filesToCleanup.push(backgroundVideoLocalPath);
-        }
-      });
+    // Upload all assets to S3 for Lambda to access
+    console.log('Uploading assets to S3 for Lambda...');
+    
+    // 1. Upload audio files to S3
+    const hookAudioS3Key = `audio/${userId}/${timestamp}-hook-audio.mp3`;
+    const scriptAudioS3Key = `audio/${userId}/${timestamp}-script-audio.mp3`;
+    
+    const hookAudioUrl = await uploadToS3(hookAudioPath, hookAudioS3Key);
+    const scriptAudioUrl = await uploadToS3(scriptAudioPath, scriptAudioS3Key);
+    
+    s3Assets.push(hookAudioS3Key, scriptAudioS3Key);
+    
+    // 2. Upload channel image to S3 if it's a URL
+    let channelImageS3Url = channelImageUrl;
+    if (channelImageUrl && channelImageUrl.startsWith('http')) {
+      const channelImageS3Key = `images/${userId}/${timestamp}-channel-image${path.extname(channelImageUrl) || '.jpg'}`;
+      channelImageS3Url = await uploadRemoteUrlToS3(channelImageUrl, channelImageS3Key);
+      s3Assets.push(channelImageS3Key);
+    }
+    
+    // 3. Upload font file to S3 if provided
+    let fontS3Url = null;
+    console.log(`Checking font URL: ${fontUrl}`);
+    
+    if (fontUrl && typeof fontUrl === 'string' && fontUrl.startsWith('http')) {
+      console.log(`Uploading font from URL: ${fontUrl}`);
+      try {
+        const fontExtension = path.extname(fontUrl) || '.ttf';
+        const fontS3Key = `fonts/${userId}/${timestamp}-font${fontExtension}`;
+        fontS3Url = await uploadRemoteUrlToS3(fontUrl, fontS3Key);
+        console.log(`Successfully uploaded font to S3, URL: ${fontS3Url}`);
+        s3Assets.push(fontS3Key);
+      } catch (fontError) {
+        console.error(`Error uploading font to S3: ${fontError.message}`);
+        // Continue without the custom font if there's an error
+        fontS3Url = null;
+      }
+    } else {
+      console.log(`No valid font URL provided, using default font: ${font}`);
+    }
+    
+    // 4. Upload background videos to S3 if they're URLs
+    const backgroundVideosWithS3Urls = [];
+    for (let i = 0; i < videos.length; i++) {
+      const video = videos[i];
+      if (video.path && video.path.startsWith('http')) {
+        const videoS3Key = `videos/backgrounds/${userId}/${timestamp}-bg-${i}${path.extname(video.path) || '.mp4'}`;
+        const videoS3Url = await uploadRemoteUrlToS3(video.path, videoS3Key);
+        backgroundVideosWithS3Urls.push({
+          ...video,
+          path: videoS3Url
+        });
+        s3Assets.push(videoS3Key);
+      } else {
+        backgroundVideosWithS3Urls.push(video);
+      }
     }
     
     const fps = 30;
@@ -1040,23 +1386,164 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     const scriptFrames = Math.ceil(scriptDurationInSeconds * fps);
     const totalFrames = hookFrames + scriptFrames;
     
-    // Convert local audio paths to HTTP URLs
-    const hookAudioFileName = path.basename(hookAudioPath);
-    const scriptAudioFileName = path.basename(scriptAudioPath);
+    // If the site hasn't been deployed yet, do it now
+    if (!remotionSite) {
+      console.log('Deploying Remotion site for Lambda...');
+      const bundled = await bundle(path.join(__dirname, 'remotion/index.tsx'));
+      
+      remotionSite = await deploySite({
+        siteName: SITE_NAME,
+        entryPoint: './remotion/index.tsx',
+        region: AWS_REGION,
+        accessKeyId: AWS_ACCESS_KEY_ID,
+        secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        bucketName: remotionBucketName
+      });
+      console.log('Remotion site deployed:', remotionSite.serveUrl);
+    } else {
+      console.log('Using existing Remotion site:', remotionSite.serveUrl);
+    }
     
-    // Use the server's IP address instead of localhost
-    const serverAddress = 'localhost:3004'; // Your machine's IP and port
-    const hookAudioUrl = `http://${serverAddress}/audio/${hookAudioFileName}`;
-    const scriptAudioUrl = `http://${serverAddress}/audio/${scriptAudioFileName}`;
+    // Before starting the render, add a check to ensure the site is accessible
+    // Add this after the site deployment section in renderHookVideo
+    if (!remotionSite) {
+      throw new Error('Failed to initialize Remotion site. Check AWS credentials and network connectivity.');
+    }
     
-    // Bundle the video
-    console.log('Bundling Remotion components...');
-    const bundled = await bundle(path.join(__dirname, 'remotion/index.tsx'));
+    // Verify that the site is accessible
+    console.log('Verifying Remotion site accessibility...');
+    try {
+      const siteResponse = await fetch(remotionSite.serveUrl);
+      if (!siteResponse.ok) {
+        console.error(`Site check failed with status: ${siteResponse.status} ${siteResponse.statusText}`);
+        // If the site isn't accessible, try to redeploy it
+        console.log('Redeploying site due to accessibility issues...');
+        
+        remotionSite = await deploySite({
+          siteName: SITE_NAME,
+          entryPoint: './remotion/index.tsx',
+          region: AWS_REGION,
+          accessKeyId: AWS_ACCESS_KEY_ID,
+          secretAccessKey: AWS_SECRET_ACCESS_KEY,
+          bucketName: remotionBucketName
+        });
+        
+        console.log('Site redeployed:', remotionSite.serveUrl);
+      } else {
+        console.log('Remotion site is accessible:', remotionSite.serveUrl);
+      }
+    } catch (siteCheckError) {
+      console.error('Error checking site accessibility:', siteCheckError);
+      // Continue despite error - the render will fail if the site is truly inaccessible
+    }
     
-    // Prepare input props for Remotion
+    // 5. Upload small video assets for HookVideo component
+    console.log('Uploading small video assets for HookVideo component...');
+    const smallVideoAssets = {};
+    const smallVideoFrames = {};
+    
+    // Log progress updates to client
+    res.write(JSON.stringify({
+      type: 'status_update',
+      status: 'uploading_assets',
+      progress: 70
+    }) + '\n\n');
+    
+    // Upload video files
+    for (let i = 1; i <= 6; i++) {
+      try {
+        console.log(`Uploading small video ${i} to S3...`);
+        const videoPath = path.join(__dirname, `remotion/assets/videos/${i}.mp4`);
+        if (!fs.existsSync(videoPath)) {
+          console.warn(`Small video file not found: ${videoPath}`);
+          continue;
+        }
+        
+        const videoS3Key = `videos/small/${userId}/${timestamp}-video-${i}.mp4`;
+        const videoS3Url = await uploadToS3(videoPath, videoS3Key);
+        smallVideoAssets[`video${i}`] = videoS3Url;
+        s3Assets.push(videoS3Key);
+        console.log(`Successfully uploaded small video ${i} to S3: ${videoS3Url}`);
+      } catch (videoError) {
+        console.error(`Error uploading small video ${i} to S3: ${videoError.message}`);
+        // Continue without this video
+      }
+      
+      // Upload frame images as fallbacks
+      try {
+        console.log(`Uploading frame ${i} to S3...`);
+        const framePath = path.join(__dirname, `remotion/assets/videos/frames/${i}.jpg`);
+        if (!fs.existsSync(framePath)) {
+          console.warn(`Frame file not found: ${framePath}`);
+          continue;
+        }
+        
+        const frameS3Key = `videos/frames/${userId}/${timestamp}-frame-${i}.jpg`;
+        const frameS3Url = await uploadToS3(framePath, frameS3Key);
+        smallVideoFrames[`frame${i}`] = frameS3Url;
+        s3Assets.push(frameS3Key);
+        console.log(`Successfully uploaded frame ${i} to S3: ${frameS3Url}`);
+      } catch (frameError) {
+        console.error(`Error uploading frame ${i} to S3: ${frameError.message}`);
+        // Continue without this frame
+      }
+      
+      // Update progress
+      res.write(JSON.stringify({
+        type: 'status_update',
+        status: 'uploading_assets',
+        progress: 70 + Math.floor((i / 6) * 10)
+      }) + '\n\n');
+    }
+    
+    // Upload other UI assets
+    console.log('Uploading UI assets for HookVideo component...');
+    let badgeUrl, bubbleUrl, shareUrl;
+    try {
+      const badgePath = path.join(__dirname, 'remotion/assets/badge.png');
+      if (fs.existsSync(badgePath)) {
+        const badgeS3Key = `assets/${userId}/${timestamp}-badge.png`;
+        badgeUrl = await uploadToS3(badgePath, badgeS3Key);
+        s3Assets.push(badgeS3Key);
+        console.log(`Successfully uploaded badge asset to S3: ${badgeUrl}`);
+      } else {
+        console.warn('Badge asset not found:', badgePath);
+      }
+      
+      const bubblePath = path.join(__dirname, 'remotion/assets/bubble.svg');
+      if (fs.existsSync(bubblePath)) {
+        const bubbleS3Key = `assets/${userId}/${timestamp}-bubble.svg`;
+        bubbleUrl = await uploadToS3(bubblePath, bubbleS3Key);
+        s3Assets.push(bubbleS3Key);
+        console.log(`Successfully uploaded bubble asset to S3: ${bubbleUrl}`);
+      } else {
+        console.warn('Bubble asset not found:', bubblePath);
+      }
+      
+      const sharePath = path.join(__dirname, 'remotion/assets/share.svg');
+      if (fs.existsSync(sharePath)) {
+        const shareS3Key = `assets/${userId}/${timestamp}-share.svg`;
+        shareUrl = await uploadToS3(sharePath, shareS3Key);
+        s3Assets.push(shareS3Key);
+        console.log(`Successfully uploaded share asset to S3: ${shareUrl}`);
+      } else {
+        console.warn('Share asset not found:', sharePath);
+      }
+    } catch (assetError) {
+      console.error(`Error uploading UI assets to S3: ${assetError.message}`);
+      // Continue without UI assets
+    }
+    
+    // Print summary of all assets
+    console.log('Summary of uploaded assets:');
+    console.log('Videos:', smallVideoAssets);
+    console.log('Frames:', smallVideoFrames);
+    console.log('UI assets:', { badgeUrl, bubbleUrl, shareUrl });
+    
+    // Prepare input props for Remotion Lambda
     const inputProps = {
       channelName,
-      channelImage: channelImageUrl,
+      channelImage: channelImageS3Url,
       hookText,
       audioUrl: hookAudioUrl,
       audioDurationInSeconds: hookDurationInSeconds,
@@ -1064,60 +1551,218 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       scriptAudioUrl: scriptAudioUrl,
       scriptAudioDurationInSeconds: scriptDurationInSeconds,
       wordTimings,
-      totalDurationInFrames: Math.ceil(fps * (hookDurationInSeconds + scriptDurationInSeconds)),
-      backgroundVideoPath: videos,
+      totalDurationInFrames: totalFrames,
+      backgroundVideoPath: backgroundVideosWithS3Urls,
       channelStyle,
       font,
-      fontUrl,
+      fontUrl: fontS3Url, // Only use the S3 URL if we managed to upload it
       has_background_music,
       subtitle_size,
-      stroke_size
-    };
-
-    const compositions = await getCompositions(bundled, { inputProps });
-    
-    const composition = compositions.find((c) => c.id === 'MainComposition');
-    
-    if (!composition) {
-      throw new Error('Could not find MainComposition');
-    }
-
-    // Now that we're ready to render the final video, send the video processing status
-    console.log('Starting final video rendering...');
-    res.write(JSON.stringify({
-      type: 'status_update',
-      status: 'video_processing'
-    }) + '\n\n');
-    
-    await renderMedia({
-      composition,
-      serveUrl: bundled,
-      codec: 'h264',
-      outputLocation: outputPath,
-      inputProps,
-      videoBitrate: '6M',
-      durationInFrames: Math.ceil(fps * (hookDurationInSeconds + scriptDurationInSeconds)),
-      fps: 30,
-      width: 1080,
-      height: 1920,
-      timeoutInMilliseconds: 600000,
-      pixelFormat: 'yuv420p',  // Consistent pixel format
-      x264: {
-        preset: 'slower',  // Better quality encoding
-        profile: 'high',
-        tune: 'animation',  // Optimize for animated content
+      stroke_size,
+      // Add assetUrls for HookVideo component
+      assetUrls: {
+        badge: badgeUrl,
+        bubble: bubbleUrl,
+        share: shareUrl,
+        frames: smallVideoFrames,
+        videos: smallVideoAssets
       }
+    };
+    
+    console.log('Remotion input props prepared:', {
+      font,
+      fontUrl: fontS3Url,
+      totalDurationInFrames: totalFrames
     });
     
-    console.log('Video rendering completed successfully');
+    console.log('Starting Lambda rendering...');
+    
+    // Calculate frameRange correctly (adjust for 0-indexing)
+    const frameRange = [0, totalFrames - 2]; // Adjust to ensure we're within the composition's range
+    
+    console.log(`Rendering frames: ${frameRange[0]}-${frameRange[1]} (total: ${totalFrames} frames)`);
+    
+    // Render with Lambda
+    console.log('Starting Lambda rendering with simplified configuration...');
+    try {
+      renderResponse = await renderMediaOnLambda({
+        region: AWS_REGION,
+        functionName: remotionFunction.functionName,
+        serveUrl: remotionSite.serveUrl,
+        composition: 'MainComposition',
+        inputProps,
+        codec: 'h264',
+        imageFormat: 'jpeg',
+        maxRetries: 3,
+        framesPerLambda: 20, // Lower value for better reliability
+        concurrencyPerLambda: 6, // Reduce concurrency to avoid overwhelming Lambda
+        privacy: 'private',
+        frameRange: frameRange,
+        outName: `${userId}-${timestamp}.mp4`,
+        timeoutInMilliseconds: LAMBDA_TIMEOUT * 1000,
+        bucketName: remotionBucketName,
+        chromiumOptions: {
+          disableWebSecurity: true,
+          ignoreCertificateErrors: true
+        },
+        webhookUrl: null,
+        onProgress: (progress) => {
+          console.log(`Rendering progress: ${progress.renderedFrames}/${progress.totalFrames} frames (${Math.floor(progress.renderedFrames / progress.totalFrames * 100)}%)`);
+          
+          // Send progress updates to client
+          res.write(JSON.stringify({
+            type: 'status_update',
+            status: 'video_processing',
+            progress: Math.floor(progress.renderedFrames / progress.totalFrames * 100)
+          }) + '\n\n');
+        },
+      });
+      console.log('Lambda render completed successfully:', renderResponse);
+    } catch (renderError) {
+      console.error('Lambda render error:', renderError);
+      
+      // Check if the error contains detailed information
+      if (renderError.cause) {
+        console.error('Error cause:', renderError.cause);
+      }
+      
+      if (renderError.message) {
+        console.error('Error message:', renderError.message);
+      }
+      
+      // Try to log all render error details
+      console.error('Full render error details:', JSON.stringify(renderError, null, 2));
+      
+      // Throw the error to continue with error handling
+      throw renderError;
+    }
+    
+    // Wait for rendering to complete by polling the status
+    console.log('Waiting for Lambda rendering to complete by polling status...');
+    
+    // Import the getRenderProgress function (correct name from docs)
+    const { getRenderProgress } = await import('@remotion/lambda/client');
+    
+    // Poll the status every 5 seconds
+    const POLL_INTERVAL = 5000; 
+    
+    let renderComplete = false;
+    let outputUrl = null;
+    
+    // Maximum wait time - 10 minutes
+    const MAX_WAIT_TIME = 10 * 60 * 1000;
+    const startTime = Date.now();
+    
+    try {
+      while (!renderComplete) {
+        // Check if we've exceeded the maximum wait time
+        if (Date.now() - startTime > MAX_WAIT_TIME) {
+          throw new Error('Rendering timed out after 10 minutes');
+        }
+        
+        // Get the current render progress using the correct function
+        const progress = await getRenderProgress({
+          renderId: renderResponse.renderId,
+          functionName: remotionFunction.functionName,
+          region: AWS_REGION,
+          bucketName: remotionBucketName,
+        });
+        
+        // Progress is returned as a value between 0-1, convert to percentage for logging
+        const progressPercent = Math.floor(progress.overallProgress * 100);
+        console.log(`Render progress: ${progressPercent}%, Done: ${progress.done}`);
+        
+        // Send progress updates to client
+        res.write(JSON.stringify({
+          type: 'status_update',
+          status: 'video_processing',
+          progress: progressPercent
+        }) + '\n\n');
+        
+        // Check if the rendering is complete
+        if (progress.done) {
+          renderComplete = true;
+          outputUrl = progress.outputFile;
+          console.log('Lambda render completed. Output URL:', outputUrl);
+        } else if (progress.fatalErrorEncountered) {
+          // Log the detailed progress object for debugging
+          console.error('Render failed with errors. Full progress object:', JSON.stringify(progress, null, 2));
+          
+          // Extract the specific error message from the errors array if possible
+          let errorMessage = 'Unknown error';
+          
+          if (progress.errors && Array.isArray(progress.errors) && progress.errors.length > 0) {
+            // If errors is an array of objects with a message property
+            if (typeof progress.errors[0] === 'object' && progress.errors[0].message) {
+              errorMessage = progress.errors.map(err => err.message).join(', ');
+            } else {
+              // If errors is an array of strings
+              errorMessage = progress.errors.join(', ');
+            }
+          } else if (progress.errors && typeof progress.errors === 'object') {
+            // If errors is a single object
+            errorMessage = JSON.stringify(progress.errors);
+          } else if (progress.errors) {
+            // If errors is a primitive value
+            errorMessage = String(progress.errors);
+          }
+          
+          throw new Error(`Rendering failed: ${errorMessage}`);
+        } else {
+          // Wait before polling again
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        }
+      }
+      
+      if (!outputUrl) {
+        throw new Error('Rendering completed but no output URL was provided');
+      }
+    } catch (progressError) {
+      console.error('Error while polling render progress:', progressError);
+      throw progressError; // Re-throw to be caught by the outer try/catch
+    }
+    
+    // Download the rendered video using Remotion's downloadMedia function
+    console.log('Downloading rendered video using downloadMedia...');
+    let downloadSuccessful = false;
+    let videoDownloadedPath = null;
+    
+    try {
+      // Import the downloadMedia function from the correct package
+      const { downloadMedia } = await import('@remotion/lambda');
+      
+      const { outputPath: downloadedPath, sizeInBytes } = await downloadMedia({
+        renderId: renderResponse.renderId,
+        bucketName: remotionBucketName,
+        functionName: remotionFunction.functionName,
+        region: AWS_REGION,
+        outPath: outputPath,
+        onProgress: ({totalSize, downloaded, percent}) => {
+          console.log(`Download progress: ${downloaded}/${totalSize} bytes (${(percent * 100).toFixed(0)}%)`);
+        },
+      });
+      
+      console.log(`Video downloaded to: ${downloadedPath} (${sizeInBytes} bytes)`);
+      downloadSuccessful = true;
+      videoDownloadedPath = downloadedPath;
+      
+      // Remove the file from files to clean up since it was successfully downloaded
+      const fileIndex = filesToCleanup.indexOf(outputPath);
+      if (fileIndex > -1) {
+        filesToCleanup.splice(fileIndex, 1);
+      }
+    } catch (downloadError) {
+      console.error('Error downloading video using downloadMedia:', downloadError);
+      throw new Error(`Failed to download video: ${downloadError.message}`);
+    }
     
     // Upload video to Supabase storage
     console.log('Uploading video to Supabase storage...');
-    const videoBuffer = fs.readFileSync(outputPath);
     const videoFileName = `${userId}/${timestamp}-video.mp4`;
+    const videoFileBuffer = fs.readFileSync(videoDownloadedPath);
     const { data: videoData, error: videoError } = await supabase.storage
       .from('videos')
-      .upload(videoFileName, videoBuffer, {
+      .upload(videoFileName, videoFileBuffer, {
         contentType: 'video/mp4',
         cacheControl: '3600'
       });
@@ -1129,10 +1774,10 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       .from('videos')
       .getPublicUrl(videoFileName);
 
-    // Generate thumbnail using ffmpeg - do this BEFORE cleaning up the video file
+    // Generate thumbnail using ffmpeg
     console.log('Generating thumbnail...');
     const thumbnailPath = path.join(imagesDir, `thumbnail-${timestamp}.jpg`);
-    await execAsync(`ffmpeg -i "${outputPath}" -ss 00:00:01 -frames:v 1 "${thumbnailPath}"`);
+    await execAsync(`ffmpeg -i "${videoDownloadedPath}" -ss 00:00:01 -frames:v 1 "${thumbnailPath}"`);
 
     // Upload thumbnail to Supabase storage
     console.log('Uploading thumbnail to Supabase storage...');
@@ -1153,7 +1798,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       .getPublicUrl(thumbnailFileName);
 
     // Clean up the output video and thumbnail files since they're now in Supabase
-    await cleanupFiles([outputPath, thumbnailPath]);
+    await cleanupFiles([videoDownloadedPath, thumbnailPath]);
 
     // Save video metadata to database
     console.log('Saving video metadata to database...');
@@ -1179,7 +1824,11 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     // Set process as complete before sending final response
     isProcessComplete = true;
 
-    // Clean up all remaining temporary files immediately
+    // Clean up all temporary S3 assets
+    console.log('Cleaning up S3 assets...');
+    await cleanupS3Assets(s3Assets);
+
+    // Clean up all remaining temporary files
     console.log('Cleaning up all temporary files...');
     await cleanupFiles(filesToCleanup);
 
@@ -1201,7 +1850,36 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
 
     res.end();
   } catch (error) {
-    console.error('Error rendering video:', error);
+    console.error('Error rendering video with Lambda:', error);
+    
+    // Clean up S3 assets if there was an error
+    if (s3Assets.length > 0) {
+      console.log('Cleaning up S3 assets due to error...');
+      try {
+        await cleanupS3Assets(s3Assets);
+      } catch (cleanupError) {
+        console.error('Error cleaning up S3 assets:', cleanupError);
+      }
+    }
+    
+    // If a Lambda render was initiated, try to cancel it
+    if (renderResponse && renderResponse.renderId) {
+      try {
+        console.log(`Attempting to cancel Lambda render with ID: ${renderResponse.renderId}`);
+        // Import the cancelRendering function from the correct location
+        const { cancelRendering } = await import('@remotion/lambda');
+        await cancelRendering({
+          renderId: renderResponse.renderId,
+          functionName: remotionFunction.functionName,
+          region: AWS_REGION,
+          accessKeyId: AWS_ACCESS_KEY_ID,
+          secretAccessKey: AWS_SECRET_ACCESS_KEY,
+        });
+        console.log('Lambda render cancelled successfully');
+      } catch (cancelError) {
+        console.error('Error cancelling Lambda render:', cancelError);
+      }
+    }
     
     // Send error status to client
     res.write(JSON.stringify({
@@ -1292,7 +1970,7 @@ app.get('/api/user-settings/:userId', async (req, res) => {
   }
 });
 
-// Modified generate-video endpoint to use cached settings
+// Modified generate-video endpoint to use Lambda rendering
 app.post('/api/generate-video', async (req, res) => {
 
   // Array to keep track of files to clean up
@@ -1331,6 +2009,15 @@ app.post('/api/generate-video', async (req, res) => {
     console.log('useUserSettings:', useUserSettings);
     console.log('Channel font:', channelFont);
     console.log('Pitch up enabled:', pitch_up);
+    console.log('Rendering with AWS Lambda enabled');
+
+    // Validate AWS credentials
+    if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+      return res.status(400).json({
+        success: false,
+        error: 'AWS credentials not found. Lambda rendering is not available.'
+      });
+    }
 
     // Validate required fields
     if (!hook || !script || !userId || !channelVoiceId) {
@@ -1362,6 +2049,28 @@ app.post('/api/generate-video', async (req, res) => {
         error: 'OpenRouter model is required when using OpenRouter API. Please specify a model in your settings.'
       });
     }
+    
+    // Send initial status update that we're using Lambda
+    res.write(JSON.stringify({
+      type: 'status_update',
+      status: 'initializing',
+      message: 'Initializing video generation with AWS Lambda'
+    }) + '\n\n');
+    
+    // Initialize Lambda early to ensure the bucket is ready
+    if (!remotionFunction || !remotionBucketName) {
+      console.log('Pre-initializing Lambda for video generation...');
+      await initializeLambda();
+      
+      if (!remotionBucketName) {
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to initialize Remotion bucket. Check AWS credentials.'
+        });
+      }
+    }
+    
+    console.log(`Using Remotion Lambda bucket: ${remotionBucketName}`);
 
     // Generate unique IDs for the audio files
     const hookAudioRawPath = path.join(audioDir, `hook-raw-${timestamp}.mp3`);
@@ -1721,6 +2430,7 @@ Story:
 4. **Climax (Final 10%):** Deliver satisfying instant karma/comeuppance to the antagonist
 5. **Resolution:** End immediately after the payoff with a punchy final line
 
+
 ## WRITING STYLE REQUIREMENTS
 - **Voice:** First-person, past tense, conversational tone
 - **Language:** Casual, as if telling a story to a friend
@@ -1827,6 +2537,25 @@ app.listen(PORT, 'localhost', () => {
   console.log(`Server accessible at http://localhost:${PORT}`);
   console.log(`Audio files will be available at: http://localhost:${PORT}/audio/`);
   console.log(`Images will be available at: http://localhost:${PORT}/images/`);
+  
+  // Pre-initialize Lambda on startup if credentials are available
+  if (AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
+    console.log('Pre-initializing Lambda...');
+    initializeLambda()
+      .then((func) => {
+        console.log(`Lambda function initialized: ${func.functionName}`);
+        
+        // Verify bucket name format
+        if (!remotionBucketName.startsWith('remotionlambda-')) {
+          console.warn(`Warning: Bucket name ${remotionBucketName} does not start with remotionlambda-. This may cause issues.`);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to initialize Lambda:', error);
+      });
+  } else {
+    console.warn('AWS credentials not found. Lambda rendering will not be available.');
+  }
 }); 
 
 // Add endpoint to update from GitHub
