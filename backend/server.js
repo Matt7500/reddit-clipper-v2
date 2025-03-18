@@ -475,195 +475,199 @@ async function getAudioSampleRate(filePath) {
 }
 
 // Function to process audio: remove silences and speed up
-async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp = false, isHook = true, targetDuration = null) {
-    console.log('Processing audio with parameters:', {
-        inputPath,
-        outputPath,
-        speedFactor,
-        pitchUp,
-        isHook,
-        targetDuration
-    });
+async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = false, isHook = true, targetDuration = null) {
+  console.log('Processing audio with parameters:', {
+      inputPath,
+      outputPath,
+      speedFactor,
+      pitchUp,
+      isHook,
+      targetDuration
+  });
 
-    // 1. Normalize audio
-    console.log('Step 1: Normalizing audio');
-    const normalizedAudio = outputPath + '.normalized.wav';
-    await execAsync(`ffmpeg -i "${inputPath}" -af "volume=1.5" "${normalizedAudio}"`);
-    
-    try {
-        // Get the base sample rate and duration of the input audio
-        const baseRate = await getAudioSampleRate(normalizedAudio);
-        const { stdout: durationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${normalizedAudio}"`);
-        const currentDuration = parseFloat(durationStdout);
-        
-        console.log(`Original audio stats:`, {
-            sampleRate: baseRate,
-            duration: currentDuration,
-            targetDuration: targetDuration
-        });
+  // 1. Normalize audio
+  console.log('Step 1: Normalizing audio');
+  const normalizedAudio = outputPath + '.normalized.wav';
+  await execAsync(`ffmpeg -i "${inputPath}" -af "volume=1.5" "${normalizedAudio}"`);
+  
+  try {
+      // Get the base sample rate and duration of the input audio
+      const baseRate = await getAudioSampleRate(normalizedAudio);
+      const { stdout: durationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${normalizedAudio}"`);
+      const currentDuration = parseFloat(durationStdout);
+      
+      console.log(`Original audio stats:`, {
+          sampleRate: baseRate,
+          duration: currentDuration,
+          targetDuration: targetDuration
+      });
 
-        // Define silence removal threshold and create the filter
-        const silence_threshold_db = -35;
-        const silence_filter = (
-            `silenceremove=start_periods=1:start_duration=0:`+
-            `start_threshold=${silence_threshold_db}dB:detection=peak,`+
-            `silenceremove=stop_periods=-1:stop_duration=0:`+
-            `stop_threshold=${silence_threshold_db}dB:detection=peak`
-        );
-        
-        if (pitchUp) {
-            // First remove silences regardless of hook or script
-            const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
-            
-            // Get duration after silence removal
-            const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
-            const durationAfterSilence = parseFloat(silenceDurationStdout);
-            
-            // Calculate pitch and speed factors based on requirements
-            let pitchFactor;
-            let tempoFactor = 1.0; // Separate tempo from pitch
-            
-            if (isHook) {
-                // Hook audio: use fixed factor for pitch 
-                pitchFactor = 1.4;
-                // No separate tempo adjustment needed for hook
-            } else {
-                // Script audio: calculate speed needed to match target duration
-                if (targetDuration) {
-                    // Calculate total speed factor needed to reach target duration
-                    const totalSpeedFactor = durationAfterSilence / targetDuration;
-                    
-                    // When pitchUp is true, we want both the pitch and tempo to contribute to speed
-                    // Use the total speed factor as the pitch factor to get the chipmunk effect
-                    pitchFactor = totalSpeedFactor;
-                    
-                    // No additional tempo adjustment needed, since the pitch change will handle speed
-                    tempoFactor = 1.0;
-                    
-                    // Ensure pitch factor is within reasonable limits
-                    pitchFactor = Math.max(1.0, Math.min(2.0, pitchFactor));
-                    
-                    console.log(`Script audio adjustments:`, {
-                        originalDuration: currentDuration,
-                        durationAfterSilence: durationAfterSilence,
-                        targetDuration: targetDuration,
-                        pitchFactor: pitchFactor,
-                        tempoFactor: tempoFactor,
-                        expectedFinalDuration: durationAfterSilence / pitchFactor
-                    });
-                } else {
-                    // No target duration specified, use default speed factor
-                    pitchFactor = speedFactor;
-                    tempoFactor = 1.0;
-                }
-            }
+      // Define silence removal threshold and create the filter
+      const silence_threshold_db = -35;
+      const silence_filter = (
+          `silenceremove=start_periods=1:start_duration=0:`+
+          `start_threshold=${silence_threshold_db}dB:detection=peak,`+
+          `silenceremove=stop_periods=-1:stop_duration=0:`+
+          `stop_threshold=${silence_threshold_db}dB:detection=peak`
+      );
+      
+      if (pitchUp) {
+          // First remove silences regardless of hook or script
+          const silenceRemovedTemp = outputPath + '.silence-removed.wav';
+          await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
+          
+          // Get duration after silence removal
+          const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
+          const durationAfterSilence = parseFloat(silenceDurationStdout);
+          
+          // Calculate pitch and speed factors based on requirements
+          let pitchFactor;
+          let tempoFactor = 1.0; // Separate tempo from pitch
+          
+          if (isHook) {
+              // Hook audio: keep the stronger chipmunk effect
+              pitchFactor = 1.3; // Fixed pitch factor of 1.3 as requested
+              // The speed is handled by this pitch factor (1.3) since pitchUp is true
+              // No need for additional tempo adjustment for hook
+          } else {
+              // Script audio: use a slightly reduced pitch factor for a more balanced effect
+              // Use 1.15 instead of 1.3 to make it less chipmunky but still similar character
+              pitchFactor = 1.15; // Reduced pitch factor for script (less chipmunk effect)
+              
+              // Calculate tempo factor based on target duration
+              if (targetDuration) {
+                  // Calculate total speed factor needed to reach target duration
+                  const requiredTotalSpeedFactor = durationAfterSilence / targetDuration;
+                  
+                  // Calculate tempo factor to achieve target duration
+                  // Since pitch change already speeds up by pitchFactor
+                  const targetTempoFactor = requiredTotalSpeedFactor / pitchFactor;
+                  
+                  // Apply safety limits to tempo factor
+                  tempoFactor = Math.max(0.5, Math.min(2.0, targetTempoFactor));
+                  
+                  console.log(`Script audio adjustments:`, {
+                      originalDuration: currentDuration,
+                      durationAfterSilence: durationAfterSilence,
+                      targetDuration: targetDuration,
+                      requiredTotalSpeedFactor: requiredTotalSpeedFactor,
+                      pitchFactor: pitchFactor,
+                      tempoFactor: tempoFactor,
+                      expectedFinalDuration: durationAfterSilence / (pitchFactor * tempoFactor)
+                  });
+              } else {
+                  // No target duration, use reduced pitch factor with default tempo
+                  tempoFactor = 1.0;
+              }
+          }
 
-            // Calculate the exact sample rate needed for pitch adjustment (like in the Python example)
-            const newRate = Math.floor(baseRate * pitchFactor);
-            
-            console.log('Audio processing parameters:', {
-                originalSampleRate: baseRate,
-                newSampleRate: newRate,
-                pitchFactor: pitchFactor,
-                tempoFactor: tempoFactor,
-                effectiveSpeedFactor: isHook ? pitchFactor : pitchFactor * tempoFactor,
-                expectedDuration: isHook ? durationAfterSilence / pitchFactor : durationAfterSilence / (pitchFactor * tempoFactor),
-                isHook: isHook
-            });
-            
-            // Build the filter chain exactly as in the Python example
-            let filterChain = [
-                // First change the sample rate to affect pitch
-                `asetrate=${newRate}`,
-                // Then resample back to original rate while preserving the pitch change
-                `aresample=${baseRate}`
-            ];
-            
-            // Add tempo adjustment if needed
-            if (tempoFactor !== 1.0) {
-                filterChain.push(`atempo=${tempoFactor.toFixed(4)}`);
-            }
-            
-            // Join the filter chain with commas (like in the Python example)
-            const filterString = filterChain.join(',');
-            
-            // Apply the filter chain            
-            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -filter:a "${filterString}" -ar ${baseRate} -y "${outputPath}"`);
-            
-            // Clean up temporary files
-            await cleanupFiles([silenceRemovedTemp]);
-            
-            // Verify final duration
-            const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
-            const finalDuration = parseFloat(finalDurationStdout);
-            
-            console.log('Final audio duration:', {
-                targetDuration: targetDuration,
-                actualDuration: finalDuration,
-                difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
-            });
-        } else {
-            // When pitch up is false, use atempo for speed change only
-            let effectiveSpeedFactor = speedFactor;
-            
-            // If silences need to be removed, do that first
-            const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-            await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
-            
-            // Get duration after silence removal
-            const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
-            const durationAfterSilence = parseFloat(silenceDurationStdout);
-            
-            // If target duration is specified, calculate required speed factor
-            if (targetDuration) {
-                // Calculate total speed factor needed to reach target duration
-                effectiveSpeedFactor = durationAfterSilence / targetDuration;
-                
-                // Ensure speed factor is within reasonable limits
-                effectiveSpeedFactor = Math.max(0.8, Math.min(2.0, effectiveSpeedFactor));
-                
-                console.log(`Calculated speed factor to match target duration: ${effectiveSpeedFactor}`);
-            }
-            
-            // For normal speed changing, use high quality ATEMPO
-            let atempoChain = "";
-            let remainingSpeedFactor = effectiveSpeedFactor;
-            
-            // ATEMPO filter can only handle values between 0.5 and 2.0, so chain if needed
-            while (remainingSpeedFactor > 2.0) {
-                atempoChain += "atempo=2.0,";
-                remainingSpeedFactor /= 2.0;
-            }
-            while (remainingSpeedFactor < 0.5) {
-                atempoChain += "atempo=0.5,";
-                remainingSpeedFactor *= 2.0;
-            }
-            atempoChain += `atempo=${remainingSpeedFactor.toFixed(4)}`;
-            
-            // Apply speed adjustment to the silence-removed audio
-            await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${atempoChain}" -y "${outputPath}"`);
-            
-            // Clean up temp file
-            await cleanupFiles([silenceRemovedTemp]);
-            
-            // Verify final duration
-            const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
-            const finalDuration = parseFloat(finalDurationStdout);
-            
-            console.log('Final audio duration:', {
-                targetDuration: targetDuration,
-                actualDuration: finalDuration,
-                difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
-            });
-        }
-    } catch (error) {
-        console.error('Error processing audio:', error);
-        throw error;
-    } finally {
-        // Clean up intermediate files
-        await cleanupFiles([normalizedAudio]);
-    }
+          // Calculate the exact sample rate needed for pitch adjustment (like in the Python example)
+          const newRate = Math.floor(baseRate * pitchFactor);
+          
+          console.log('Audio processing parameters:', {
+              originalSampleRate: baseRate,
+              newSampleRate: newRate,
+              pitchFactor: pitchFactor,
+              tempoFactor: tempoFactor,
+              effectiveSpeedFactor: isHook ? pitchFactor : pitchFactor * tempoFactor,
+              expectedDuration: isHook ? durationAfterSilence / pitchFactor : durationAfterSilence / (pitchFactor * tempoFactor),
+              isHook: isHook
+          });
+          
+          // Build the filter chain exactly as in the Python example
+          let filterChain = [
+              // First change the sample rate to affect pitch
+              `asetrate=${newRate}`,
+              // Then resample back to original rate while preserving the pitch change
+              // Use simpler aresample parameters compatible with most FFmpeg versions
+              `aresample=${baseRate}`
+          ];
+          
+          // Add tempo adjustment if needed
+          if (tempoFactor !== 1.0) {
+              // Higher quality atempo with optimal settings
+              filterChain.push(`atempo=${tempoFactor.toFixed(4)}`);
+          }
+          
+          // Join the filter chain with commas (like in the Python example)
+          const filterString = filterChain.join(',');
+          
+          // Apply the filter chain with high quality settings but simpler parameters
+          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -filter:a "${filterString}" -ar ${baseRate} -q:a 0 -y "${outputPath}"`);
+          
+          // Clean up temporary files
+          await cleanupFiles([silenceRemovedTemp]);
+          
+          // Verify final duration
+          const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
+          const finalDuration = parseFloat(finalDurationStdout);
+          
+          console.log('Final audio duration:', {
+              targetDuration: targetDuration,
+              actualDuration: finalDuration,
+              difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
+          });
+      } else {
+          // When pitch up is false, use atempo for speed change only
+          let effectiveSpeedFactor = speedFactor;
+          
+          // If silences need to be removed, do that first
+          const silenceRemovedTemp = outputPath + '.silence-removed.wav';
+          await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
+          
+          // Get duration after silence removal
+          const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
+          const durationAfterSilence = parseFloat(silenceDurationStdout);
+          
+          // If target duration is specified, calculate required speed factor
+          if (targetDuration) {
+              // Calculate total speed factor needed to reach target duration
+              effectiveSpeedFactor = durationAfterSilence / targetDuration;
+              
+              // Ensure speed factor is within reasonable limits
+              effectiveSpeedFactor = Math.max(0.8, Math.min(2.0, effectiveSpeedFactor));
+              
+              console.log(`Calculated speed factor to match target duration: ${effectiveSpeedFactor}`);
+          }
+          
+          // For normal speed changing, use high quality ATEMPO
+          let atempoChain = "";
+          let remainingSpeedFactor = effectiveSpeedFactor;
+          
+          // ATEMPO filter can only handle values between 0.5 and 2.0, so chain if needed
+          while (remainingSpeedFactor > 2.0) {
+              atempoChain += "atempo=2.0,";
+              remainingSpeedFactor /= 2.0;
+          }
+          while (remainingSpeedFactor < 0.5) {
+              atempoChain += "atempo=0.5,";
+              remainingSpeedFactor *= 2.0;
+          }
+          atempoChain += `atempo=${remainingSpeedFactor.toFixed(4)}`;
+          
+          // Apply speed adjustment to the silence-removed audio
+          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${atempoChain}" -ar ${baseRate} -q:a 0 -y "${outputPath}"`);
+          
+          // Clean up temp file
+          await cleanupFiles([silenceRemovedTemp]);
+          
+          // Verify final duration
+          const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
+          const finalDuration = parseFloat(finalDurationStdout);
+          
+          console.log('Final audio duration:', {
+              targetDuration: targetDuration,
+              actualDuration: finalDuration,
+              difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
+          });
+      }
+  } catch (error) {
+      console.error('Error processing audio:', error);
+      throw error;
+  } finally {
+      // Clean up intermediate files
+      await cleanupFiles([normalizedAudio]);
+  }
 }
 
 // Function to clean up files
@@ -679,6 +683,7 @@ async function cleanupFiles(files) {
     }
   }
 }
+
 
 // Function to transcribe audio and get word-level timestamps
 async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channelStyle = 'grouped', openrouterApiKey = null, openrouterModel = null) {
@@ -1736,10 +1741,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
         bucketName: remotionBucketName,
         functionName: remotionFunction.functionName,
         region: AWS_REGION,
-        outPath: outputPath,
-        onProgress: ({totalSize, downloaded, percent}) => {
-          console.log(`Download progress: ${downloaded}/${totalSize} bytes (${(percent * 100).toFixed(0)}%)`);
-        },
+        outPath: outputPath
       });
       
       console.log(`Video downloaded to: ${downloadedPath} (${sizeInBytes} bytes)`);
@@ -2132,9 +2134,11 @@ app.post('/api/generate-video', async (req, res) => {
     fs.writeFileSync(scriptAudioRawPath, Buffer.from(scriptAudioBuffer));
     console.log(`Raw script audio saved to: ${scriptAudioRawPath}`);
 
-    // Process hook audio with fixed speed (1.2x) and remove silences
+    // Process hook audio with fixed speed (1.2x) and pitch_up if enabled
     console.log('Processing hook audio...');
-    await processAudio(hookAudioRawPath, hookAudioProcessedPath, 1.2, pitch_up, true);
+    // For hook audio, we always use speed factor 1.2, regardless of pitch_up setting
+    const hookSpeedFactor = 1.2;
+    await processAudio(hookAudioRawPath, hookAudioProcessedPath, hookSpeedFactor, pitch_up, true);
     
     // Clean up raw hook audio file since we have the processed version
     await cleanupFiles([hookAudioRawPath]);
