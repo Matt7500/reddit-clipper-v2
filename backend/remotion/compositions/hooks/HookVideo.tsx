@@ -1,4 +1,4 @@
-import { useCurrentFrame, interpolate, Easing, Audio, useVideoConfig } from 'remotion';
+import { useCurrentFrame, interpolate, Easing, Audio, useVideoConfig, OffthreadVideo } from 'remotion';
 import React from 'react';
 // Remove Google Fonts import
 // import { loadFont } from "@remotion/google-fonts/Roboto";
@@ -71,15 +71,16 @@ const getVideoUrl = (assetUrls: any, index: number, fallback: any) => {
   return fallback;
 };
 
-// Replace the VideoComponent with a simpler version that just uses static images
-// This will ensure the render process completes while we troubleshoot the video loading issues
+// Replace the VideoComponent with OffthreadVideo 
 const VideoComponent: React.FC<{
   src: string;
   style: React.CSSProperties;
   alt?: string;
   index: number;
 }> = ({ src, style, alt = 'Video', index }) => {
-  // Simply use the corresponding static frame directly
+  const frame = useCurrentFrame();
+  
+  // Get fallback frame for initial display
   let fallbackFrame;
   switch (index) {
     case 1: fallbackFrame = frame1; break;
@@ -91,12 +92,19 @@ const VideoComponent: React.FC<{
     default: fallbackFrame = frame1;
   }
 
-  // For now, just use the static images to ensure rendering completes
+  // If we're in the first few frames, show the static image
+  // This provides a nice placeholder while video loads
+  if (frame < 5) {
+    return <img src={fallbackFrame} style={style} alt={alt} />;
+  }
+
+  // After first few frames, use OffthreadVideo
   return (
-    <img
-      src={fallbackFrame}
+    <OffthreadVideo
+      src={src}
       style={style}
-      alt={alt}
+      className="remotion-video"
+      muted
     />
   );
 };
