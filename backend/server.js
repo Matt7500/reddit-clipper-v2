@@ -475,7 +475,7 @@ async function getAudioSampleRate(filePath) {
 }
 
 // Function to process audio: remove silences and speed up
-async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = false, isHook = true, targetDuration = null) {
+async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp = false, isHook = true, targetDuration = null) {
   console.log('Processing audio with parameters:', {
       inputPath,
       outputPath,
@@ -525,38 +525,36 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
           let tempoFactor = 1.0; // Separate tempo from pitch
           
           if (isHook) {
-              // Hook audio: keep the stronger chipmunk effect
-              pitchFactor = 1.3; // Fixed pitch factor of 1.3 as requested
-              // The speed is handled by this pitch factor (1.3) since pitchUp is true
-              // No need for additional tempo adjustment for hook
+              // Hook audio: use fixed factor for pitch 
+              pitchFactor = 1.4;
+              // No separate tempo adjustment needed for hook
           } else {
-              // Script audio: use a slightly reduced pitch factor for a more balanced effect
-              // Use 1.15 instead of 1.3 to make it less chipmunky but still similar character
-              pitchFactor = 1.15; // Reduced pitch factor for script (less chipmunk effect)
-              
-              // Calculate tempo factor based on target duration
+              // Script audio: calculate speed needed to match target duration
               if (targetDuration) {
                   // Calculate total speed factor needed to reach target duration
-                  const requiredTotalSpeedFactor = durationAfterSilence / targetDuration;
+                  const totalSpeedFactor = durationAfterSilence / targetDuration;
                   
-                  // Calculate tempo factor to achieve target duration
-                  // Since pitch change already speeds up by pitchFactor
-                  const targetTempoFactor = requiredTotalSpeedFactor / pitchFactor;
+                  // When pitchUp is true, we want both the pitch and tempo to contribute to speed
+                  // Use the total speed factor as the pitch factor to get the chipmunk effect
+                  pitchFactor = totalSpeedFactor;
                   
-                  // Apply safety limits to tempo factor
-                  tempoFactor = Math.max(0.5, Math.min(2.0, targetTempoFactor));
+                  // No additional tempo adjustment needed, since the pitch change will handle speed
+                  tempoFactor = 1.0;
+                  
+                  // Ensure pitch factor is within reasonable limits
+                  pitchFactor = Math.max(1.0, Math.min(2.0, pitchFactor));
                   
                   console.log(`Script audio adjustments:`, {
                       originalDuration: currentDuration,
                       durationAfterSilence: durationAfterSilence,
                       targetDuration: targetDuration,
-                      requiredTotalSpeedFactor: requiredTotalSpeedFactor,
                       pitchFactor: pitchFactor,
                       tempoFactor: tempoFactor,
-                      expectedFinalDuration: durationAfterSilence / (pitchFactor * tempoFactor)
+                      expectedFinalDuration: durationAfterSilence / pitchFactor
                   });
               } else {
-                  // No target duration, use reduced pitch factor with default tempo
+                  // No target duration specified, use default speed factor
+                  pitchFactor = speedFactor;
                   tempoFactor = 1.0;
               }
           }
@@ -579,21 +577,19 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
               // First change the sample rate to affect pitch
               `asetrate=${newRate}`,
               // Then resample back to original rate while preserving the pitch change
-              // Use simpler aresample parameters compatible with most FFmpeg versions
               `aresample=${baseRate}`
           ];
           
           // Add tempo adjustment if needed
           if (tempoFactor !== 1.0) {
-              // Higher quality atempo with optimal settings
               filterChain.push(`atempo=${tempoFactor.toFixed(4)}`);
           }
           
           // Join the filter chain with commas (like in the Python example)
           const filterString = filterChain.join(',');
           
-          // Apply the filter chain with high quality settings but simpler parameters
-          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -filter:a "${filterString}" -ar ${baseRate} -q:a 0 -y "${outputPath}"`);
+          // Apply the filter chain            
+          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -filter:a "${filterString}" -ar ${baseRate} -y "${outputPath}"`);
           
           // Clean up temporary files
           await cleanupFiles([silenceRemovedTemp]);
@@ -646,7 +642,7 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
           atempoChain += `atempo=${remainingSpeedFactor.toFixed(4)}`;
           
           // Apply speed adjustment to the silence-removed audio
-          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${atempoChain}" -ar ${baseRate} -q:a 0 -y "${outputPath}"`);
+          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "${atempoChain}" -y "${outputPath}"`);
           
           // Clean up temp file
           await cleanupFiles([silenceRemovedTemp]);
@@ -672,16 +668,16 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = 
 
 // Function to clean up files
 async function cleanupFiles(files) {
-  for (const file of files) {
-    try {
-      if (fs.existsSync(file)) {
-        await fs.promises.unlink(file);
-        console.log(`Cleaned up file: ${file}`);
-      }
-    } catch (error) {
-      console.error(`Error cleaning up file ${file}:`, error);
+for (const file of files) {
+  try {
+    if (fs.existsSync(file)) {
+      await fs.promises.unlink(file);
+      console.log(`Cleaned up file: ${file}`);
     }
+  } catch (error) {
+    console.error(`Error cleaning up file ${file}:`, error);
   }
+}
 }
 
 
