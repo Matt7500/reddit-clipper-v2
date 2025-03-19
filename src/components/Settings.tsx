@@ -393,8 +393,8 @@ export const Settings = () => {
 
   const validateElevenLabsKey = (key: string) => {
     if (!key) return "";
-    const regex = /^[a-f0-9]{32}$/;
-    return regex.test(key) ? "" : "Invalid ElevenLabs API key format. Should be 32 characters long.";
+    const regex = /^sk_[a-f0-9]{48}$/;
+    return regex.test(key) ? "" : "Invalid ElevenLabs API key format. Should start with 'sk_' followed by 48 characters.";
   };
 
   const handleOpenAIKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
