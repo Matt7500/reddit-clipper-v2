@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Play, Loader2, ArrowLeft, ArrowRight, CheckCircle2, Check, Sparkles } from "lucide-react";
+import { Play, Loader2, ArrowLeft, ArrowRight, CheckCircle2, Check, Sparkles, Wand2 } from "lucide-react";
 import type { ChannelProfile } from "@/types/channel";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +13,19 @@ import { useUserSettings } from "@/contexts/UserSettingsContext";
 import { useToast } from "@/components/ui/use-toast";
 import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// Define available models for the dropdown
+const OPENROUTER_MODELS = [
+  { id: "anthropic/claude-3.7-sonnet:thinking", name: "Claude 3.7 Sonnet (Thinking)" },
+  { id: "anthropic/claude-3.7-sonnet:beta", name: "Claude 3.7 Sonnet" },
+  { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1" },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini Flash 2.0" },
+  { id: "google/gemini-2.0-pro-exp-02-05:free", name: "Gemini Pro 2.0" },
+];
+
+// Default model for generation
+const DEFAULT_MODEL = "anthropic/claude-3.7-sonnet:thinking";
 
 interface ChannelScript {
   channelId: string;
@@ -49,9 +62,15 @@ export function MultiChannelScriptModal({
   const [activeTab, setActiveTab] = useState<string>(channels.length > 0 ? channels[0].id : "");
   const [completedAnimations, setCompletedAnimations] = useState<Record<string, boolean>>({});
   const [generatingSingleChannel, setGeneratingSingleChannel] = useState<string | null>(null);
+  const [generatingScriptFromHook, setGeneratingScriptFromHook] = useState<string | null>(null);
+  const [generatingHook, setGeneratingHook] = useState<string | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState<'initializing' | 'generating_hook' | 'generating_script' | 'finalizing'>('initializing');
   const [isClosing, setIsClosing] = useState(false);
+  
+  // New state for model selection
+  const [hookModel, setHookModel] = useState<string>(settings.openrouterModel || DEFAULT_MODEL);
+  const [scriptModel, setScriptModel] = useState<string>(settings.openrouterModel || DEFAULT_MODEL);
 
   // Simple handler for closing the modal
   const handleClose = React.useCallback(() => {
@@ -70,6 +89,18 @@ export function MultiChannelScriptModal({
       setIsClosing(false);
     }, 200); // Match this with the animation duration
   }, [onOpenChange]);
+
+  // Initialize model selections from user settings
+  useEffect(() => {
+    if (settings.openrouterModel) {
+      setHookModel(settings.openrouterModel);
+      setScriptModel(settings.openrouterModel);
+    } else {
+      // If no user settings, ensure we use the default model
+      setHookModel(DEFAULT_MODEL);
+      setScriptModel(DEFAULT_MODEL);
+    }
+  }, [settings.openrouterModel]);
 
   // Reset channel scripts when channels change
   useEffect(() => {
@@ -139,12 +170,112 @@ export function MultiChannelScriptModal({
     onGenerate(validScripts);
   };
 
-  const handleGenerateSingleChannel = async (channelId: string) => {
-    // Validate API keys
-    if (!settings.openaiApiKey && !settings.openrouterApiKey) {
+  // Handle generating just the hook
+  const handleGenerateHook = async (channelId: string) => {
+    // Validate API keys - prioritize OpenRouter
+    if (!settings.openrouterApiKey && !settings.openaiApiKey) {
       toast({
         title: "API Key Required",
-        description: "Please add an OpenAI or OpenRouter API key in your settings to generate scripts.",
+        description: "Please add an OpenRouter or OpenAI API key in your settings to generate scripts.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return;
+    }
+
+    setGeneratingHook(channelId);
+    setGenerationProgress(0);
+    setGenerationStep('initializing');
+    
+    try {
+      // Start progress animation
+      setTimeout(() => {
+        setGenerationStep('generating_hook');
+        setGenerationProgress(25);
+      }, 500);
+      
+      // Make API call to generate hook only
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/generate-script`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          openaiApiKey: settings.openaiApiKey,
+          openrouterApiKey: settings.openrouterApiKey,
+          openrouterModel: hookModel,
+          hookOnly: true, // Signal we only want the hook
+        }),
+      });
+      
+      // Update progress
+      setGenerationProgress(60);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate hook');
+      }
+      
+      // Get response data
+      const data = await response.json();
+      
+      // Final progress step
+      setGenerationStep('finalizing');
+      setGenerationProgress(90);
+      
+      if (data.success) {
+        // Short delay to show the finalizing step
+        setTimeout(() => {
+          // Update the channel hook with the generated content
+          handleHookChange(channelId, data.hook);
+          
+          // Complete the progress
+          setGenerationProgress(100);
+          
+          // Reset after a short delay
+          setTimeout(() => {
+            setGeneratingHook(null);
+            setGenerationProgress(0);
+            setGenerationStep('initializing');
+          }, 500);
+        }, 500);
+      } else {
+        throw new Error(data.error || 'Failed to generate hook');
+      }
+    } catch (error) {
+      toast({
+        title: "Error generating hook",
+        description: error instanceof Error ? error.message : "Something went wrong while generating the hook",
+        variant: "destructive",
+        duration: 5000,
+      });
+      setGeneratingHook(null);
+      setGenerationProgress(0);
+      setGenerationStep('initializing');
+    }
+  };
+
+  // Generate just the script (for a channel that already has a hook)
+  const handleGenerateScript = async (channelId: string) => {
+    // Get the current hook for this channel
+    const currentHook = channelScripts.find(cs => cs.channelId === channelId)?.hook;
+
+    // Validate the hook
+    if (!currentHook || currentHook.trim() === "") {
+      toast({
+        title: "Hook Required",
+        description: "Please enter a hook first before generating a script.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Validate API keys - prioritize OpenRouter
+    if (!settings.openrouterApiKey && !settings.openaiApiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please add an OpenRouter or OpenAI API key in your settings to generate scripts.",
         variant: "destructive",
         duration: 5000,
       });
@@ -158,11 +289,11 @@ export function MultiChannelScriptModal({
     try {
       // Start progress animation
       setTimeout(() => {
-        setGenerationStep('generating_hook');
-        setGenerationProgress(25);
-      }, 500);
+        setGenerationStep('generating_script');
+        setGenerationProgress(30);
+      }, 300);
       
-      // Make API call to generate script
+      // Make API call to generate script based on the hook
       const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/generate-script`, {
         method: 'POST',
         headers: {
@@ -171,13 +302,13 @@ export function MultiChannelScriptModal({
         body: JSON.stringify({
           openaiApiKey: settings.openaiApiKey,
           openrouterApiKey: settings.openrouterApiKey,
-          openrouterModel: settings.openrouterModel,
+          openrouterModel: scriptModel,
+          customHook: currentHook,
         }),
       });
       
-      // Update progress after API call starts
-      setGenerationStep('generating_script');
-      setGenerationProgress(60);
+      // Update progress
+      setGenerationProgress(70);
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -194,8 +325,7 @@ export function MultiChannelScriptModal({
       if (data.success) {
         // Short delay to show the finalizing step
         setTimeout(() => {
-          // Update the channel script with the generated content
-          handleHookChange(channelId, data.hook);
+          // Update the script, keeping the original hook
           handleScriptChange(channelId, data.script);
           
           // Complete the progress
@@ -228,10 +358,20 @@ export function MultiChannelScriptModal({
     cs.hook.trim() !== "" && cs.script.trim() !== ""
   );
 
+  // Check if any kind of generation is happening
+  const isAnyGenerationActive = generatingSingleChannel !== null || generatingHook !== null;
+
   // Count how many channels have content
   const channelsWithContent = channelScripts.filter(cs => 
     cs.hook.trim() !== "" && cs.script.trim() !== ""
   ).length;
+
+  // Check generation type for a specific channel
+  const getGenerationTypeForChannel = (channelId: string) => {
+    if (generatingHook === channelId) return 'hook';
+    if (generatingSingleChannel === channelId) return 'script';
+    return null;
+  };
 
   // Navigation functions
   const goToNextChannel = () => {
@@ -298,7 +438,7 @@ export function MultiChannelScriptModal({
   return (
     <Dialog 
       open={isOpen} 
-      onOpenChange={(open) => {
+      onOpenChange={(open: boolean) => {
         if (!open) {
           // Start closing animation
           setIsClosing(true);
@@ -513,14 +653,50 @@ export function MultiChannelScriptModal({
               </TabsList>
             </div>
             
+            {/* Model selection section */}
+            <div className="flex gap-4 mb-4 p-2 border-b border-white/10 pb-4">
+              <div className="flex-1">
+                <Label className="text-white text-sm mb-1 block">Hook Generation Model</Label>
+                <Select value={hookModel} onValueChange={setHookModel}>
+                  <SelectTrigger className="bg-[#333333] border-[#3A3A3A] text-white">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#333333] border-[#3A3A3A] text-white">
+                    {OPENROUTER_MODELS.map(model => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <Label className="text-white text-sm mb-1 block">Script Generation Model</Label>
+                <Select value={scriptModel} onValueChange={setScriptModel}>
+                  <SelectTrigger className="bg-[#333333] border-[#3A3A3A] text-white">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#333333] border-[#3A3A3A] text-white">
+                    {OPENROUTER_MODELS.map(model => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
             <div className="flex-1 py-1 px-1 overflow-y-auto">
               {channels.map(channel => {
                 const channelScript = channelScripts.find(cs => cs.channelId === channel.id);
                 if (!channelScript) return null;
                 
                 const currentIndex = channels.findIndex(c => c.id === channel.id);
-                const isGenerating = generatingSingleChannel === channel.id;
+                const isChannelGenerating = getGenerationTypeForChannel(channel.id) !== null;
+                const generationType = getGenerationTypeForChannel(channel.id);
                 const hasContent = channelScript.hook.trim() !== "" && channelScript.script.trim() !== "";
+                const hasHook = channelScript.hook.trim() !== "";
                 
                 return (
                   <TabsContent key={channel.id} value={channel.id} className="mt-0 h-full">
@@ -551,33 +727,53 @@ export function MultiChannelScriptModal({
                             )}
                           </div>
                         </div>
-                        <Button
-                          onClick={() => handleGenerateSingleChannel(channel.id)}
-                          disabled={isGenerating || generatingSingleChannel !== null}
-                          size="sm"
-                          className="bg-primary/20 hover:bg-primary/30 text-primary border border-primary/20 gap-1"
-                        >
-                          {generatingSingleChannel === channel.id ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="w-3 h-3" />
-                              Generate Script
-                            </>
-                          )}
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => handleGenerateHook(channel.id)}
+                            disabled={isAnyGenerationActive}
+                            size="sm"
+                            className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/20 gap-1"
+                          >
+                            {generatingHook === channel.id ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Generating Hook...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3 h-3" />
+                                Generate Hook
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            onClick={() => handleGenerateScript(channel.id)}
+                            disabled={isAnyGenerationActive || !hasHook}
+                            size="sm"
+                            className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/20 gap-1"
+                          >
+                            {generatingSingleChannel === channel.id ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Generating Script...
+                              </>
+                            ) : (
+                              <>
+                                <Wand2 className="w-3 h-3" />
+                                Generate Script
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                       
-                      {generatingSingleChannel === channel.id && (
+                      {isChannelGenerating && (
                         <div className="mb-5">
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-xs text-muted-foreground">
                               {generationStep === 'initializing' && 'Initializing...'}
-                              {generationStep === 'generating_hook' && 'Generating hook...'}
-                              {generationStep === 'generating_script' && 'Generating script...'}
+                              {generationStep === 'generating_hook' && generationType === 'hook' && 'Generating hook...'}
+                              {generationStep === 'generating_script' && generationType === 'script' && 'Generating script...'}
                               {generationStep === 'finalizing' && 'Finalizing content...'}
                             </span>
                             <span className="text-xs font-medium">{Math.round(generationProgress)}%</span>
@@ -597,10 +793,10 @@ export function MultiChannelScriptModal({
                           <Input
                             placeholder="Enter an attention-grabbing hook..."
                             value={channelScript.hook}
-                            onChange={(e) => handleHookChange(channel.id, e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleHookChange(channel.id, e.target.value)}
                             className="bg-[#333333] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-3 h-12 transition-colors"
                             style={{ fontSize: '16px' }}
-                            disabled={isGenerating}
+                            disabled={isAnyGenerationActive}
                           />
                         </div>
                         
@@ -614,10 +810,10 @@ export function MultiChannelScriptModal({
                           <Textarea
                             placeholder="Write your script here..."
                             value={channelScript.script}
-                            onChange={(e) => handleScriptChange(channel.id, e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleScriptChange(channel.id, e.target.value)}
                             className="flex-1 bg-[#333333] border-[#3A3A3A] text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent p-4 transition-colors h-full"
                             style={{ fontSize: '16px' }}
-                            disabled={isGenerating}
+                            disabled={isAnyGenerationActive}
                           />
                         </div>
                       </div>
@@ -640,10 +836,10 @@ export function MultiChannelScriptModal({
           </Button>
           <Button
             onClick={handleGenerateAll}
-            disabled={isGenerating || generatingSingleChannel !== null || !isValid}
+            disabled={isAnyGenerationActive || generatingSingleChannel !== null || !isValid}
             className="bg-primary hover:bg-primary/90 text-white font-medium gap-2 px-4 py-1 h-9 text-sm"
           >
-            {isGenerating ? (
+            {isAnyGenerationActive ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Generating...

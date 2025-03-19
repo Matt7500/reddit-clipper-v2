@@ -475,7 +475,7 @@ async function getAudioSampleRate(filePath) {
 }
 
 // Function to process audio: remove silences and speed up
-async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp = false, isHook = true, targetDuration = null) {
+async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = false, isHook = true, targetDuration = null) {
   console.log('Processing audio with parameters:', {
       inputPath,
       outputPath,
@@ -526,7 +526,7 @@ async function processAudio(inputPath, outputPath, speedFactor = 1.25, pitchUp =
           
           if (isHook) {
               // Hook audio: use fixed factor for pitch 
-              pitchFactor = 1.4;
+              pitchFactor = 1.3;
               // No separate tempo adjustment needed for hook
           } else {
               // Script audio: calculate speed needed to match target duration
@@ -2327,98 +2327,29 @@ app.post('/api/login', async (req, res) => {
 // Add endpoint for generating scripts
 app.post('/api/generate-script', async (req, res) => {
   try {
-    const { openaiApiKey, openrouterApiKey, openrouterModel } = req.body;
+    const { openrouterApiKey, openrouterModel, customHook, hookOnly } = req.body;
 
-    console.log('Received request with OpenAI API key:', openaiApiKey);
     console.log('Received request with OpenRouter API key:', openrouterApiKey);
     console.log('Received request with OpenRouter model:', openrouterModel);
+    console.log('Received request with custom hook:', customHook);
+    console.log('Hook only mode:', hookOnly);
 
-    if (!openaiApiKey) {
+    // Validate OpenRouter API key
+    if (!openrouterApiKey) {
       return res.status(400).json({
         success: false,
-        error: 'Missing OpenAI API key.'
+        error: 'Missing OpenRouter API key.'
       });
     }
 
-    // Define topics with their weights
-    const topics = [
-      { name: 'Teachers', weight: 30 },
-      { name: 'Parents', weight: 20 },
-      { name: 'Dads', weight: 20 },
-      { name: 'General', weight: 20 },
-      { name: 'Karen', weight: 10 }
-    ];
-
-    // Function to select a topic based on weighted probabilities
-    const selectWeightedTopic = (topics) => {
-      // Calculate total weight
-      const totalWeight = topics.reduce((sum, topic) => sum + topic.weight, 0);
-      
-      // Generate a random number between 0 and totalWeight
-      const randomValue = Math.random() * totalWeight;
-      
-      // Find the topic that corresponds to the random value
-      let cumulativeWeight = 0;
-      for (const topic of topics) {
-        cumulativeWeight += topic.weight;
-        if (randomValue <= cumulativeWeight) {
-          return topic.name;
-        }
-      }
-      
-      // Fallback to the last topic (should never happen unless weights are 0)
-      return topics[topics.length - 1].name;
-    };
-
-    // Select a topic based on weighted probabilities
-    const selectedTopic = selectWeightedTopic(topics);
-    console.log(`Selected topic: ${selectedTopic}`);
-
-    // Get OpenAI client with the provided API key
-    const client = getOpenAIClient(openaiApiKey);
-    const systemPrompt = `You are tasked with creating a Reddit-style short story for YouTube Shorts.`;
-
-    try {
-      const completion = await client.chat.completions.create({
-        model: 'ft:gpt-4o-mini-2024-07-18:personal:reddit-shorts-ft:B8nwnuGO',
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: `Write a full length story that is 350 words in length about the topic: ${selectedTopic}.The hook MUST be a MAXIMUM of 10 words in length. Only write in plaintext.
-
-Return your response in the following format:
-
-Hook:
-<hook>
-
-Story:
-<story>`
-          }
-        ],
-        temperature: 0.5
-      });
-
-      const generatedText = completion.choices[0].message.content;
-      console.log('Generated Text:', generatedText);
-
-      // Parse the hook and script from the generated text
-      const hookMatch = generatedText.match(/Hook:\s*\n(.*?)(?=\n\nStory:)/s);
-      const scriptMatch = generatedText.match(/Story:\s*\n(.*?)$/s);
-
-      if (!hookMatch || !scriptMatch) {
-        throw new Error('Failed to parse generated script format');
-      }
-
-      // Get OpenRouter client with the provided API key
-      const openrouterClient = getOpenRouterClient(openrouterApiKey);
-      const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
+    // Get OpenRouter client with the provided API key
+    const openrouterClient = getOpenRouterClient(openrouterApiKey);
+    
+    // System prompt for story generation
+    const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
 
 ## CORE PARAMETERS
-- **Total Length:** The story should be 350 words in length.
+- **Total Length:** The story should be MINIMUM 350 words in length.
 - **Hook:** Maximum 10 words, phrased as a question
 - **Format:** Plain text only
 - **Dialogue** Less than 5 lines of dialogue total that are brief sentences.
@@ -2463,61 +2394,230 @@ Story:
 
 When given a hook or topic, I will generate a complete story following these exact guidelines, maintaining the specified tone, structure, and satisfying payoff ending.`;
 
-      const storyCompletion = await openrouterClient.chat.completions.create({
-        model: openrouterModel,
-        messages: [
-          {
-            role: "system",
-            content: openrouterSystemPrompt
-          },
-          {
-            role: "user",
-            content: hookMatch[1]
+    // Clean markdown from text while preserving newlines
+    const cleanText = (text) => {
+      return text
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .replace(/`/g, '')
+        .replace(/#{1,6}\s/g, '')
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+        .trim();
+    };
+
+    // ROUTE 1: Generate only a hook
+    if (hookOnly) {
+      console.log('Generating hook only...');
+      try {
+        // Define topics with their weights
+        const topics = [
+          { name: 'Teachers', weight: 30 },
+          { name: 'Parents', weight: 20 },
+          { name: 'Dads', weight: 20 },
+          { name: 'General', weight: 20 },
+          { name: 'Karen', weight: 10 }
+        ];
+
+        // Function to select a topic based on weighted probabilities
+        const selectWeightedTopic = (topics) => {
+          // Calculate total weight
+          const totalWeight = topics.reduce((sum, topic) => sum + topic.weight, 0);
+          
+          // Generate a random number between 0 and totalWeight
+          const randomValue = Math.random() * totalWeight;
+          
+          // Find the topic that corresponds to the random value
+          let cumulativeWeight = 0;
+          for (const topic of topics) {
+            cumulativeWeight += topic.weight;
+            if (randomValue <= cumulativeWeight) {
+              return topic.name;
+            }
           }
-        ],
-        temperature: 0.7
-      });
+          
+          // Fallback to the last topic
+          return topics[topics.length - 1].name;
+        };
 
-      const claudeResponse = storyCompletion.choices[0].message.content;
+        // Select a topic based on weighted probabilities
+        const selectedTopic = selectWeightedTopic(topics);
+        console.log(`Selected topic for hook generation: ${selectedTopic}`);
 
-      const hookCompletion = claudeResponse.match(/Hook:\s*\n(.*?)(?=\n\nStory:)/s);
-      const scriptCompletion = claudeResponse.match(/Story:\s*\n(.*?)$/s);
+        // Generate hook using OpenRouter
+        const hookCompletion = await openrouterClient.chat.completions.create({
+          model: openrouterModel,
+          messages: [
+            {
+              role: "system",
+              content: `### System Instructions for Viral Reddit Questions  
 
-      if (!hookCompletion || !scriptCompletion) {
-        throw new Error('Failed to parse generated script format');
-      }
+              You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **funny, awkward, or bizarre** personal stories.  
+              
+              ### 🎯 **Your Goal:**  
+              Generate **viral, comment-bait questions** similar to r/AskReddit threads that make people **instantly want to share their experience.**  
+              
+              ---
+              
+              ### ⚠️ **IMPORTANT: AVOID REPETITIVE STRUCTURES**
+              If you've been asked to generate multiple questions, DO NOT create variations of the same question or structure.
+              For example, if you've created "Moms, what's the most...", DO NOT create another "Moms, what's the..." question.
+              Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspectives.
+              
+              ---
+              
+              ### 🔥 **The Vibe & Themes:**  
+              - Awkward social interactions  
+              - Dumb mistakes & misunderstandings  
+              - Embarrassing moments & cringe stories  
+              - Unexpected twists & weird encounters  
+              - Hilarious childhood beliefs  
+              - Workplace & school drama  
+              - Family chaos & relationship mishaps  
+              - Strange coincidences  
+              - Parent-child dynamics and stories
+              - Sibling and extended family interactions
+              
+              ---
+              
+              ### ✅ **Rules for Question Generation:**  
+              ✔ **Keep it varied** – NEVER use the same structure twice
+              ✔ **Relatable & natural phrasing** – Must feel like a real Reddit question  
+              ✔ **Maximum length: 80 characters**  
+              ✔ **No asterisks, markdown, or special formatting**  
+              ✔ **Make people think, "I HAVE a story for this!"**  
+              ✔ **FREQUENTLY include different family perspectives** (dads, moms, sons, daughters, siblings, etc.)
+              
+              ---
+              
+              ### 🎯 **Proven Question Formats (MUST ROTATE AND VARY - NEVER USE SAME FORMAT TWICE):**  
+              - **"What's the most..."** → Easy, classic setup  
+              - **"Parents, what's the funniest..."** → Authority figure POV  
+              - **"Dads, what's the weirdest..."** → Father-specific perspective  
+              - **"Moms, when did you..."** → Mother-specific perspective  
+              - **"Sons/Daughters, how did you..."** → Child perspective  
+              - **"Have you ever..."** → Direct experience prompt  
+              - **"When did you realize..."** → Moment of recognition  
+              - **"How did you react when..."** → Forces a vivid memory  
+              - **"What's something that..."** → Open-ended curiosity  
+              - **"Tell me about a time..."** → Instant storytelling setup  
+              - **"What happened when..."** → Encourages an unexpected twist  
+              
+              ---
+              
+              ### 🎯 **Example Questions (Use these & create new variations - DO NOT REPEAT PATTERNS):**  
+              1. Parents, what's the funniest lie your kid ever confidently told you?  
+              2. What's the dumbest thing you got in trouble for at school?  
+              3. Have you ever witnessed an argument so stupid it left you speechless?  
+              4. What's the most embarrassing way you've been caught lying?  
+              5. What's the weirdest thing you've ever overheard from a stranger?  
+              6. When did you realize you were the villain in someone else's story?  
+              7. What's the most awkward way you've offended someone without meaning to?  
+              8. Tell me about a time you accidentally made a situation WAY worse.  
+              9. What's the wildest excuse someone gave for missing work or school?  
+              10. How did you turn a small mistake into a full-blown disaster?
+              11. Dads, what's the most ridiculous thing you've done to make your kids laugh?
+              12. Moms, when did your child completely embarrass you in public?
+              13. Sons, what's something your dad taught you that you'll never forget?
+              14. Daughters, what's the most awkward conversation you've had with your mom?
+              15. Siblings, what's the craziest revenge you've taken on your brother or sister?
+              
+              ---
+              
+              ### ✅ **Guidelines for Creating Unique New Questions:**  
+              1. **Use DIFFERENT sentence structures** – Don't just copy one format.  
+              2. **Explore DIFFERENT SETTINGS** – Work, school, home, public places.  
+              3. **Vary RELATIONSHIPS** – Friends, family, coworkers, strangers, bosses.  
+              4. **Use DIFFERENT QUESTION TYPES** – "What," "When," "How," "Have you ever."  
+              5. **Trigger a strong reaction** – The best questions make people **laugh, cringe, or instantly remember a story.**
+              6. **Include family perspectives** – Make at least 40% of questions target specific family roles (dads, moms, sons, daughters, siblings).
+              7. **TRUE DIVERSITY** – If asked for multiple questions, each one must be COMPLETELY DIFFERENT from the last in both topic and structure.
+              
+              ---
+              
+              ### **Output Format:**  
+              A **single, engaging Reddit-style question** that follows these rules and keeps **structure variety.** and **no asterisks!** or markdown formatting. Just plain text.`
+            },
+            {
+              role: "user",
+              content: `Totally new question:`
+            }
+          ],
+          temperature: 1,
+          max_tokens: 40
+        });
 
-      // Clean markdown from text while preserving newlines
-      const cleanText = (text) => {
-        return text
-          .replace(/\*\*/g, '')
-          .replace(/\*/g, '')
-          .replace(/`/g, '')
-          .replace(/#{1,6}\s/g, '')
-          .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+        const generatedHook = hookCompletion.choices[0].message.content
+          .replace(/["']/g, '') // Remove quotes
+          .replace(/^\s*[Hh]ook:\s*/, '') // Remove any "Hook:" prefix
           .trim();
-      };
 
-      const hook = cleanText(hookMatch[1]);
-      const script = cleanText(scriptCompletion[1]);
+        console.log('Generated hook:', generatedHook);
 
-      res.json({
-        success: true,
-        hook,
-        script,
-        topic: selectedTopic
-      });
-    } catch (apiError) {
-      console.error('OpenAI API Error:', apiError);
-      
-      // Handle specific OpenAI error types
-      if (apiError.error?.type === 'invalid_request_error') {
-        throw new Error(`Invalid request: ${apiError.error.message}`);
-      } else if (apiError.error?.type === 'rate_limit_error') {
-        throw new Error('Rate limit exceeded. Please try again later.');
-      } else {
-        throw new Error('Failed to generate script: ' + (apiError.error?.message || apiError.message));
+        res.json({
+          success: true,
+          hook: generatedHook,
+          topic: selectedTopic
+        });
+        return;
+      } catch (apiError) {
+        console.error('OpenRouter API Error (hook generation):', apiError);
+        throw new Error('Failed to generate hook: ' + (apiError.error?.message || apiError.message));
       }
+    }
+    
+    // ROUTE 2: Generate script from an existing hook
+    else if (customHook && customHook.trim() !== '') {
+      console.log(`Generating script from provided hook: ${customHook}`);
+
+      try {
+        const storyCompletion = await openrouterClient.chat.completions.create({
+          model: openrouterModel,
+          messages: [
+            {
+              role: "system",
+              content: openrouterSystemPrompt
+            },
+            {
+              role: "user",
+              content: customHook
+            }
+          ],
+          temperature: 1
+        });
+
+        const claudeResponse = storyCompletion.choices[0].message.content;
+
+        // Check if the response contains both Hook and Story sections
+        const scriptCompletion = claudeResponse.match(/Story:\s*\n(.*?)$/s);
+        
+        // If the response doesn't have proper formatting, extract just the story part
+        let script;
+        if (!scriptCompletion) {
+          // If there's no proper formatting, use the entire response as the script
+          script = claudeResponse.trim();
+        } else {
+          script = scriptCompletion[1].trim();
+        }
+
+        // Return the original hook and generated script
+        res.json({
+          success: true,
+          hook: customHook,
+          script: cleanText(script)
+        });
+        return;
+      } catch (apiError) {
+        console.error('OpenRouter API Error (script generation):', apiError);
+        throw new Error('Failed to generate script from hook: ' + (apiError.error?.message || apiError.message));
+      }
+    }
+    
+    // Error: Not enough information provided
+    else {
+      return res.status(400).json({
+        success: false,
+        error: 'You must either request a hook (hookOnly=true) or provide a custom hook to generate a script.'
+      });
     }
   } catch (error) {
     console.error('Script generation error:', error);
