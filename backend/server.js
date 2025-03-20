@@ -1676,8 +1676,8 @@ app.post('/api/generate-script', async (req, res) => {
     // System prompt for story generation
     const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
 
-## CORE PARAMETERS
-- **Total Length:** The story should be MINIMUM 360 words in length.
+## CORE PARAMETERS - MUST FOLLOW THESE EXACT GUIDELINES
+- **Total Length:** The story MUST be MINIMUM 380 words in length and maximum 420 words.
 - **Hook:** Maximum 10 words, phrased as a question
 - **Format:** Plain text only
 - **Dialogue** Less than 5 lines of dialogue total that are brief sentences.
@@ -1910,7 +1910,7 @@ When given a hook or topic, I will generate a complete story following these exa
               content: customHook
             }
           ],
-          temperature: 1
+          temperature: 0.7
         });
 
         const claudeResponse = storyCompletion.choices[0].message.content;

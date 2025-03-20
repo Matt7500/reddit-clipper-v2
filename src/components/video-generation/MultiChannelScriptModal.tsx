@@ -22,6 +22,8 @@ const OPENROUTER_MODELS = [
   { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1" },
   { id: "google/gemini-2.0-flash-001", name: "Gemini Flash 2.0" },
   { id: "google/gemini-2.0-pro-exp-02-05:free", name: "Gemini Pro 2.0" },
+  { id: "openai/gpt-4o-2024-11-20", name: "ChatGPT 4o (2024-11-20)" },
+  { id: "openai/chatgpt-4o-latest", name: "ChatGPT 4o" },
 ];
 
 // Default model for generation
