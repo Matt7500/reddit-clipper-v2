@@ -806,7 +806,7 @@ export function MultiChannelScriptModal({
                           <div className="flex justify-between items-center mb-2">
                             <div className="flex items-center">
                               <Label className="text-white text-base font-medium">Script</Label>
-                              <span className="text-xs text-muted-foreground ml-2">(380 words ≈ 1 minute of audio)</span>
+                              <span className="text-xs text-muted-foreground ml-2">(320 words ≈ 1 minute of audio)</span>
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {channelScript.script.trim() ? channelScript.script.trim().split(/\s+/).length : 0} words

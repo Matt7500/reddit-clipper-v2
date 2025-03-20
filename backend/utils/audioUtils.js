@@ -110,7 +110,7 @@ export async function cleanupFiles(files) {
  * @param {number|null} targetDuration - Target duration in seconds
  * @returns {Promise<void>}
  */
-export async function processAudio(inputPath, outputPath, speedFactor = 1.2, pitchUp = false, isHook = true, targetDuration = null) {
+export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pitchUp = false, isHook = true, targetDuration = null) {
   console.log('Processing audio with parameters:', {
       inputPath,
       outputPath,
