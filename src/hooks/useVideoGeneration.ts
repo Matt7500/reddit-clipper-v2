@@ -138,7 +138,8 @@ export function useVideoGeneration() {
         hook,
         script,
         elevenlabsApiKey,
-        userSettings
+        userSettings,
+        false
       );
 
       setAudioResult(result);
@@ -211,12 +212,19 @@ export function useVideoGeneration() {
       return;
     }
 
+    console.log('Starting multi-channel generation with', channelScripts.length, 'channels');
+    
+    // Set up all state for multi-channel generation
     setIsGenerating(true);
     setAudioResult(null);
     // Clear any existing completed videos
     setCompletedMultiChannelVideos([]);
+    // Explicitly close the completed dialog if it's open
+    setIsMultiChannelCompletedDialogOpen(false);
     setIsProgressModalOpen(true);
+    // Make sure multi-channel mode is explicitly set
     setIsMultiChannelMode(true);
+    console.log('Multi-channel mode set to TRUE');
     setCurrentChannelIndex(0);
     setTotalChannels(channelScripts.length);
     resetSteps();
@@ -238,6 +246,8 @@ export function useVideoGeneration() {
       // Update current channel info
       setCurrentChannelName(channel.nickname ? `${channel.nickname} (${channel.name})` : channel.name);
       setCurrentChannelImage(channel.image_url);
+      
+      console.log(`Processing channel ${i+1}/${channelScripts.length}: ${channel.name}, multi-channel mode is active`);
       
       // Reset steps for this channel
       resetSteps();
@@ -267,7 +277,8 @@ export function useVideoGeneration() {
           channelScript.hook,
           channelScript.script,
           elevenlabsApiKey,
-          userSettings
+          userSettings,
+          true
         );
 
         // Add to completed videos
@@ -345,8 +356,12 @@ export function useVideoGeneration() {
       
       // Check if this is the last channel
       if (i === channelScripts.length - 1) {
-        console.log('Last channel processed');
-        setIsGenerating(false);
+        console.log('Last channel processed, finishing multi-channel generation');
+        
+        // Important - keep isMultiChannelMode true until we show the completed dialog
+        // so our UI doesn't get confused
+        
+        // First close the progress modal
         setIsProgressModalOpen(false);
         
         // Show completed videos dialog if we have any successful generations
@@ -383,6 +398,9 @@ export function useVideoGeneration() {
             duration: 3000,
           });
         }
+        
+        // Only turn off generating after everything else is done
+        setIsGenerating(false);
       }
     }
   };
@@ -392,9 +410,10 @@ export function useVideoGeneration() {
     hookText: string, 
     scriptText: string, 
     apiKey: string,
-    settings: any
+    settings: any,
+    isMultiChannelModeParam: boolean = false
   ) => {
-    console.log(`Starting video generation for channel: ${channel.name}`);
+    console.log(`Starting video generation for channel: ${channel.name}, multi-channel mode: ${isMultiChannelModeParam}`);
     
     // Check if we have a voice model
     if (!elevenlabsVoiceModel) {
@@ -438,7 +457,7 @@ export function useVideoGeneration() {
     // Set up the first fallback for audio processing
     setupStepFallback('audio', 'transcription', 60000); // 1 minute for audio processing
 
-    console.log('Making API request to generate video');
+    console.log('Making API request to generate video, multi-channel mode:', isMultiChannelModeParam);
     const response = await fetch(`${API_URL}/api/generate-video`, {
       method: 'POST',
       headers: {
@@ -581,6 +600,7 @@ export function useVideoGeneration() {
               
               case 'video_complete':
                 console.log('Video generation completed');
+                console.log('Multi-channel mode status:', isMultiChannelModeParam);
                 updateStepStatus('video', 'completed');
                 
                 // Clear all timeouts
@@ -612,32 +632,32 @@ export function useVideoGeneration() {
                 
                 console.log('Adding video to completed list:', newCompletedVideo);
                 
-                // For single-channel mode, we'll show the dialog immediately
-                if (!isMultiChannelMode) {
-                  // Add to multi-channel videos array for the dialog
-                  // Ensure we don't have duplicates by checking if we already have a video for this channel
-                  setCompletedMultiChannelVideos(prev => {
-                    const existingIndex = prev.findIndex(v => v.channelId === channel.id);
-                    if (existingIndex >= 0) {
-                      // Replace the existing video
-                      const newArray = [...prev];
-                      newArray[existingIndex] = newCompletedVideo;
-                      return newArray;
-                    } else {
-                      // Add as a new video
-                      return [newCompletedVideo];
-                    }
-                  });
-                  
-                  // Close progress modal and open completed dialog
-                  setIsProgressModalOpen(false);
-                  setIsMultiChannelCompletedDialogOpen(true);
-                } else {
-                  // For multi-channel mode, we don't add the video here
-                  // It's already added in the generateMultiChannelVideos function
-                  // This prevents duplicate videos
-                  console.log('In multi-channel mode, video already added in main function');
+                // Skip dialog completely if in multi-channel mode
+                if (isMultiChannelModeParam) {
+                  console.log('In multi-channel mode - not showing dialog for individual video');
+                  break;
                 }
+                
+                // Only proceed with completion dialog for single-channel mode
+                console.log('In single-channel mode - showing dialog');
+                
+                // Add to multi-channel videos array for the dialog
+                setCompletedMultiChannelVideos(prev => {
+                  const existingIndex = prev.findIndex(v => v.channelId === channel.id);
+                  if (existingIndex >= 0) {
+                    // Replace the existing video
+                    const newArray = [...prev];
+                    newArray[existingIndex] = newCompletedVideo;
+                    return newArray;
+                  } else {
+                    // Add as a new video
+                    return [newCompletedVideo];
+                  }
+                });
+                
+                // Close progress modal and open completed dialog
+                setIsProgressModalOpen(false);
+                setIsMultiChannelCompletedDialogOpen(true);
                 break;
               
               case 'error':
@@ -665,9 +685,14 @@ export function useVideoGeneration() {
 
   // Remove or modify this useEffect to prevent premature dialog opening
   useEffect(() => {
+    // Extra safety checks to prevent this effect from interfering with multi-channel mode
+    if (isMultiChannelMode) {
+      console.log('useEffect: In multi-channel mode, not showing completion dialog from effect');
+      return;
+    }
+    
     // Only proceed if we have completed videos and we're not generating
-    // AND we're not in multi-channel mode (this is key)
-    if (completedMultiChannelVideos.length > 0 && !isGenerating && !isMultiChannelMode) {
+    if (completedMultiChannelVideos.length > 0 && !isGenerating) {
       console.log('useEffect: Detected completed videos in single-channel mode:', completedMultiChannelVideos.length);
       
       // If we're not showing the dialog and we're not generating, show it
