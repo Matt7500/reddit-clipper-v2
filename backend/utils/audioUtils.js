@@ -161,18 +161,24 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.2, pit
           
           if (isHook) {
               // Hook audio: use fixed factor for pitch 
-              pitchFactor = 1.3;
+              pitchFactor = 1.2;
               // No separate tempo adjustment needed for hook
           } else {
               // Script audio: calculate speed needed to match target duration
-              if (targetDuration) {
+              if (targetDuration === 1) {
+                  // When targetDuration is 1, treat it as if no target duration was specified
+                  // Use default speed factor for pitch
+                  pitchFactor = speedFactor;
+                  tempoFactor = 1.0;
+                  console.log('Target duration is 1, treating as no target duration');
+              } else if (targetDuration) {
                   // Calculate total speed factor needed to reach target duration
                   const totalSpeedFactor = durationAfterSilence / targetDuration;
                   
                   // When pitchUp is true, we want both the pitch and tempo to contribute to speed
                   // Use the total speed factor as the pitch factor to get the chipmunk effect
-                  if (targetDuration == 0) {
-                    pitchFactor = 1.3;
+                  if (targetDuration <= 0) {
+                    pitchFactor = 1.2;
                   } else {
                     pitchFactor = totalSpeedFactor;
                   }

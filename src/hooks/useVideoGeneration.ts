@@ -192,6 +192,9 @@ export function useVideoGeneration() {
         variant: "destructive",
         duration: 5000,
       });
+      
+      // Keep the progress modal open even on error, user can close it if they want
+      // since we've marked a step with error status
     } finally {
       setIsGenerating(false);
     }
@@ -350,6 +353,9 @@ export function useVideoGeneration() {
           duration: 5000,
         });
         
+        // Keep the progress modal open so user can see the error
+        // They can close it manually since we've marked a step with error status
+        
         // Wait a moment before continuing to the next channel
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -360,9 +366,6 @@ export function useVideoGeneration() {
         
         // Important - keep isMultiChannelMode true until we show the completed dialog
         // so our UI doesn't get confused
-        
-        // First close the progress modal
-        setIsProgressModalOpen(false);
         
         // Show completed videos dialog if we have any successful generations
         if (completedVideos.length > 0) {
@@ -382,6 +385,9 @@ export function useVideoGeneration() {
           // Update the state with all unique completed videos at once
           setCompletedMultiChannelVideos(uniqueVideos);
           
+          // First close the progress modal, then open the completed dialog
+          setIsProgressModalOpen(false);
+          
           // Only now show the completed dialog
           setIsMultiChannelCompletedDialogOpen(true);
           
@@ -397,6 +403,9 @@ export function useVideoGeneration() {
             variant: "destructive",
             duration: 3000,
           });
+          
+          // Don't close the progress modal automatically on failure
+          // The user can close it since there should be at least one error step
         }
         
         // Only turn off generating after everything else is done
@@ -655,7 +664,7 @@ export function useVideoGeneration() {
                   }
                 });
                 
-                // Close progress modal and open completed dialog
+                // Close progress modal only after we've successfully completed the video
                 setIsProgressModalOpen(false);
                 setIsMultiChannelCompletedDialogOpen(true);
                 break;

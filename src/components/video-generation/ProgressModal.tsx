@@ -33,8 +33,23 @@ export function ProgressModal({
 }: ProgressModalProps) {
   const progressPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   
+  // Check if there's an error in any step
+  const hasError = steps.some(step => step.status === 'error');
+  
+  // Custom onOpenChange handler to only allow closing when there's an error
+  const handleOpenChange = (open: boolean) => {
+    // If trying to close (open === false) and there's no error, prevent closing
+    if (!open && !hasError) {
+      console.log('Preventing progress modal close - generation in progress');
+      return;
+    }
+    
+    // Otherwise, allow the change
+    onOpenChange(open);
+  };
+  
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px] bg-[#222222] text-white border border-white/10" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader className="text-center">
           <DialogTitle className="text-2xl font-bold">
