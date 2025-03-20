@@ -1,43 +1,35 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BrainCircuit, Bot, Mic2, Key, Check } from "lucide-react";
+import { Bot, Mic2, Key, Check } from "lucide-react";
 import type { VoiceModel, APIKeyErrors, EditingKeys } from "./types";
 
 interface APISettingsProps {
-  openrouterModel: string;
   openrouterApiKey: string;
   elevenlabsApiKey: string;
   elevenlabsVoiceModel: string;
-  openaiApiKey: string;
   voiceModels: VoiceModel[];
   loadingModels: boolean;
   apiKeyErrors: APIKeyErrors;
   editingKeys: EditingKeys;
   isSaving: boolean;
-  onOpenAIKeyChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenRouterKeyChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onElevenLabsKeyChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onOpenRouterModelChange: (value: string) => void;
   onElevenLabsVoiceModelChange: (value: string) => void;
   onSaveSettings: () => Promise<void>;
 }
 
 export const APISettings = ({
-  openrouterModel,
   openrouterApiKey,
   elevenlabsApiKey,
   elevenlabsVoiceModel,
-  openaiApiKey,
   voiceModels,
   loadingModels,
   apiKeyErrors,
   editingKeys,
   isSaving,
-  onOpenAIKeyChange,
   onOpenRouterKeyChange,
   onElevenLabsKeyChange,
-  onOpenRouterModelChange,
   onElevenLabsVoiceModelChange,
   onSaveSettings,
 }: APISettingsProps) => {
@@ -55,35 +47,6 @@ export const APISettings = ({
         </h1>
       </div>
       <div className="space-y-6">
-        {/* OpenAI Section */}
-        <div className="space-y-4 p-4 rounded-lg bg-[#2A2A2A] border border-white/10">
-          <div className="flex items-center gap-2 mb-2">
-            <BrainCircuit className="w-5 h-5 text-green-400" />
-            <h4 className="font-medium text-white">OpenAI Configuration</h4>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">API Key</label>
-            <div className="relative">
-              <Input 
-                type="password"
-                value={openaiApiKey}
-                onChange={onOpenAIKeyChange}
-                className={getInputClassName(apiKeyErrors.openai, !!openaiApiKey)}
-                placeholder="sk-proj-..."
-              />
-              {openaiApiKey && !apiKeyErrors.openai && editingKeys.openai && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Check className="w-4 h-4 text-green-500" />
-                </div>
-              )}
-            </div>
-            {apiKeyErrors.openai && (
-              <p className="text-xs text-red-500">{apiKeyErrors.openai}</p>
-            )}
-            <p className="text-xs text-muted-foreground">Used for subtitle word coloring</p>
-          </div>
-        </div>
-
         {/* OpenRouter Section */}
         <div className="space-y-4 p-4 rounded-lg bg-[#2A2A2A] border border-white/10">
           <div className="flex items-center gap-2 mb-2">
@@ -109,17 +72,6 @@ export const APISettings = ({
             {apiKeyErrors.openrouter && (
               <p className="text-xs text-red-500">{apiKeyErrors.openrouter}</p>
             )}
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Model</label>
-            <Input 
-              type="text"
-              value={openrouterModel}
-              onChange={(e) => onOpenRouterModelChange(e.target.value)}
-              className="bg-[#222222] border-[#3A3A3A]"
-              placeholder="anthropic/claude-3-opus-20240229"
-            />
-            <p className="text-xs text-muted-foreground">The model to use for script generation</p>
           </div>
         </div>
 
