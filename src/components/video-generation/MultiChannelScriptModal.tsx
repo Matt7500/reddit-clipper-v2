@@ -34,7 +34,6 @@ interface ChannelScript {
   hook: string;
   script: string;
   expanded: boolean;
-  selected: boolean;
 }
 
 interface MultiChannelScriptModalProps {
@@ -59,8 +58,7 @@ export function MultiChannelScriptModal({
       channelId: channel.id,
       hook: "",
       script: "",
-      expanded: true,
-      selected: true
+      expanded: true
     }))
   );
   const [activeTab, setActiveTab] = useState<string>(channels.length > 0 ? channels[0].id : "");
@@ -112,8 +110,7 @@ export function MultiChannelScriptModal({
       channelId: channel.id,
       hook: "",
       script: "",
-      expanded: true,
-      selected: true
+      expanded: true
     })));
     if (channels.length > 0 && !channels.find(c => c.id === activeTab)) {
       setActiveTab(channels[0].id);
@@ -162,14 +159,14 @@ export function MultiChannelScriptModal({
   };
 
   const handleGenerateAll = () => {
-    // Filter out any channels with empty scripts or that aren't selected
-    const validScripts = channelScripts.filter(cs => 
-      cs.selected && cs.hook.trim() !== "" && cs.script.trim() !== ""
+    // Find channels with complete content (both hook and script)
+    const completeChannels = channelScripts.filter(cs => 
+      cs.hook.trim() !== "" && cs.script.trim() !== ""
     );
     
-    if (validScripts.length === 0) {
+    if (completeChannels.length === 0) {
       toast({
-        title: "No valid content to generate",
+        title: "No complete content to generate",
         description: "Please make sure at least one channel has both a hook and script completed.",
         variant: "destructive",
         duration: 5000,
@@ -177,29 +174,32 @@ export function MultiChannelScriptModal({
       return;
     }
     
-    // Check if any selected channels are missing content
-    const selectedChannels = channelScripts.filter(cs => cs.selected);
-    const incompleteChannels = selectedChannels.filter(cs => 
-      cs.hook.trim() === "" || cs.script.trim() === ""
+    // Find channels with partial content
+    const partialChannels = channelScripts.filter(cs => 
+      (cs.hook.trim() !== "" && cs.script.trim() === "") || 
+      (cs.hook.trim() === "" && cs.script.trim() !== "")
     );
     
-    if (incompleteChannels.length > 0) {
+    if (partialChannels.length > 0) {
       // Get channel names for incomplete channels
-      const incompleteChannelNames = incompleteChannels.map(cs => {
+      const partialChannelNames = partialChannels.map(cs => {
         const channel = channels.find(c => c.id === cs.channelId);
-        return channel?.nickname || channel?.name || "Unknown channel";
+        const name = channel?.nickname || channel?.name || "Unknown channel";
+        const missingPart = cs.hook.trim() === "" ? "hook" : "script";
+        return `${name} (missing ${missingPart})`;
       });
       
       toast({
         title: "Incomplete content detected",
-        description: `The following channels are missing a hook or script: ${incompleteChannelNames.join(", ")}`,
+        description: `The following channels have incomplete content: ${partialChannelNames.join(", ")}`,
         variant: "destructive",
         duration: 5000,
       });
       return;
     }
     
-    onGenerate(validScripts);
+    // All validation passed, generate videos
+    onGenerate(completeChannels);
   };
 
   // Handle generating just the hook
@@ -395,11 +395,11 @@ export function MultiChannelScriptModal({
 
   // Count how many channels have content and are selected
   const channelsWithContent = channelScripts.filter(cs => 
-    cs.selected && cs.hook.trim() !== "" && cs.script.trim() !== ""
+    cs.hook.trim() !== "" && cs.script.trim() !== ""
   ).length;
 
-  // Count total selected channels
-  const selectedChannelsCount = channelScripts.filter(cs => cs.selected).length;
+  // Total count is now just the total number of channels
+  const totalChannelsCount = channels.length;
 
   // Check generation type for a specific channel
   const getGenerationTypeForChannel = (channelId: string) => {
@@ -442,15 +442,6 @@ export function MultiChannelScriptModal({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [activeTab, channels]);
-
-  // Toggle selected state for a channel
-  const toggleChannelSelection = (channelId: string) => {
-    setChannelScripts(prev => 
-      prev.map(cs => 
-        cs.channelId === channelId ? { ...cs, selected: !cs.selected } : cs
-      )
-    );
-  };
 
   // Create a custom DialogContent component without the close button
   const CustomDialogContent = React.forwardRef<
@@ -623,13 +614,10 @@ export function MultiChannelScriptModal({
                   const hasHook = channelScript?.hook.trim() !== "";
                   const hasScript = channelScript?.script.trim() !== "";
                   const hasContent = hasHook && hasScript;
-                  const isSelected = channelScript?.selected || false;
+                  const hasPartialContent = (hasHook && !hasScript) || (!hasHook && hasScript);
                   const currentIndex = channels.findIndex(c => c.id === channel.id);
                   const showAnimation = completedAnimations[channel.id];
                   const isGenerating = generatingSingleChannel === channel.id;
-                  
-                  // Only show warning if EXACTLY one of hook or script is present
-                  const hasPartialContent = (hasHook && !hasScript) || (!hasHook && hasScript);
                   
                   return (
                     <TabsTrigger 
@@ -641,8 +629,7 @@ export function MultiChannelScriptModal({
                         "border border-white/10 hover:bg-[#2A2A2A]",
                         "mt-0.5 pr-2 pl-2 py-2",
                         "transition-all duration-300 ease-in-out",
-                        "min-w-[120px] justify-between",
-                        !isSelected && "opacity-50"
+                        "min-w-[120px] justify-between"
                       )}
                     >
                       {/* Channel identity part */}
@@ -681,7 +668,7 @@ export function MultiChannelScriptModal({
                           </div>
                         )}
                         
-                        {hasPartialContent && isSelected && (
+                        {hasPartialContent && (
                           <div 
                             className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center"
                             title={hasHook ? "Missing script" : "Missing hook"}
@@ -689,16 +676,6 @@ export function MultiChannelScriptModal({
                             <span className="text-black text-xs font-bold">!</span>
                           </div>
                         )}
-                      </div>
-                      
-                      {/* Selection toggle - no visual indicator, just click handler */}
-                      <div 
-                        className="absolute top-0 left-0 w-full h-full cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleChannelSelection(channel.id);
-                        }}
-                      >
                       </div>
                     </TabsTrigger>
                   );
@@ -926,7 +903,7 @@ export function MultiChannelScriptModal({
             ) : (
               <>
                 <Play className="w-4 h-4" />
-                Generate Videos ({channelsWithContent}/{selectedChannelsCount})
+                Generate Videos ({channelsWithContent}/{totalChannelsCount})
               </>
             )}
           </Button>
