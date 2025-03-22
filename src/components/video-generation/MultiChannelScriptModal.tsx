@@ -258,8 +258,10 @@ export function MultiChannelScriptModal({
       if (data.success) {
         // Short delay to show the finalizing step
         setTimeout(() => {
-          // Update the channel hook with the generated content
+          // Update the channel hook with the generated content and clear the script
           handleHookChange(channelId, data.hook);
+          // Clear the script since we have a new hook
+          handleScriptChange(channelId, "");
           
           // Complete the progress
           setGenerationProgress(100);

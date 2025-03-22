@@ -1677,6 +1677,9 @@ app.post('/api/generate-script', async (req, res) => {
 - **Hook:** Maximum 10 words, phrased as a question
 - **Format:** Plain text only
 - **Dialogue** Less than 5 lines of dialogue total that are brief sentences.
+- **Tone:** Deadpan, sarcastic, dry humor
+- **Plot:** The story must be written about something that is politically or morally incorrect, controversial, or offensive.
+- **Goal:** The story must be written to make the audience respond to the story relating to their own experiences or political beliefs.
 
 ## STORY STRUCTURE
 1. **Hook (First Line):** An engaging question that sets up the premise
@@ -1883,7 +1886,7 @@ When given a hook or topic, I will generate a complete story following these exa
               role: "system",
               content: `### System Instructions for Viral Reddit Questions  
 
-              You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **funny, awkward, or bizarre** personal stories.  
+              You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **funny, awkward, or bizarre** personal stories about morally and/or politically incorrect, controversial, and offensive topics.  
               
               ### 🎯 **Your Goal:**  
               Generate **viral, comment-bait questions** similar to r/AskReddit threads that make people **instantly want to share their experience.**  
@@ -1960,14 +1963,14 @@ When given a hook or topic, I will generate a complete story following these exa
               2. **Explore DIFFERENT SETTINGS** – Work, school, home, public places.  
               3. **Vary RELATIONSHIPS** – Friends, family, coworkers, strangers, bosses.  
               4. **Use DIFFERENT QUESTION TYPES** – "What," "When," "How," "Have you ever."  
-              5. **Trigger a strong reaction** – The best questions make people **laugh, cringe, or instantly remember a story.**
+              5. **Trigger a strong reaction** – The best questions make people **react emotionally from their own experiences or political beliefs**
               6. **Include family perspectives** – Make at least 40% of questions target specific family roles (dads, moms, sons, daughters, siblings).
               7. **TRUE DIVERSITY** – If asked for multiple questions, each one must be COMPLETELY DIFFERENT from the last in both topic and structure.
               
               ---
               
               ### **Output Format:**  
-              A **single, enga
+              A **single, engaging question** that makes people want to share their story.
               
               ## DO NOT EXCEED 12 WORDS IN THE HOOK YOU CREATE`
             },

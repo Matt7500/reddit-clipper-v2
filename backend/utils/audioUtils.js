@@ -19,30 +19,27 @@ export async function generateAudio(text, apiKey, voiceId, modelId) {
     console.log(`Generating audio for text: "${text.substring(0, 30)}..." with voice ID: ${voiceId}`);
     console.log(`Model ID: ${modelId}`);
     
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': apiKey
-      },
-      body: JSON.stringify({
-        text: text,
-        model_id: modelId,
-        voice_settings: {
-          stability: 0.9,
-          similarity_boost: 0.75
-        }
-      })
+    const client = new ElevenLabsClient({ apiKey });
+    
+    const audioStream = await client.textToSpeech.convert(voiceId, {
+      output_format: "mp3_44100_192",
+      text: text,
+      model_id: modelId,
+      voice_settings: {
+        stability: 0.9,
+        similarity_boost: 0.75
+      }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`ElevenLabs API error: ${response.status} ${errorText}`);
+    // Convert stream to buffer
+    const chunks = [];
+    for await (const chunk of audioStream) {
+      chunks.push(Buffer.from(chunk));
     }
-
+    
+    const audioBuffer = Buffer.concat(chunks);
     console.log('Audio generated successfully');
-    return await response.arrayBuffer();
+    return audioBuffer;
   } catch (error) {
     console.error('Error generating audio:', error);
     throw error;
@@ -603,13 +600,77 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             const rawContent = importanceData.choices[0].message.content;
             console.log(`API raw response content (first 100 chars): ${rawContent.substring(0, 100)}...`);
             
-            colorAssignments = JSON.parse(rawContent);
+            // Clean up the raw content before parsing
+            let cleanedContent = rawContent.trim();
+            
+            // If content starts with a markdown code block, remove it
+            if (cleanedContent.startsWith("```json")) {
+              cleanedContent = cleanedContent.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+            } else if (cleanedContent.startsWith("```")) {
+              cleanedContent = cleanedContent.replace(/^```\s*/, "").replace(/\s*```$/, "");
+            }
+            
+            try {
+              // First try direct parsing
+              colorAssignments = JSON.parse(cleanedContent);
+            } catch (initialParseError) {
+              console.warn(`Initial JSON parsing failed: ${initialParseError.message}`);
+              console.warn("Attempting to fix malformed JSON...");
+              
+              // If direct parsing fails, try to fix common JSON issues
+              // Replace any unescaped quotes inside strings
+              cleanedContent = cleanedContent.replace(/([,{]\s*"[^"]+)\\*"/g, '$1\\"');
+              
+              // Fix missing commas between objects
+              cleanedContent = cleanedContent.replace(/}\s*{/g, "},{");
+              
+              // Remove any trailing commas in arrays or objects
+              cleanedContent = cleanedContent.replace(/,\s*}/g, "}").replace(/,\s*\]/g, "]");
+              
+              // Ensure the content is an array
+              if (!cleanedContent.trim().startsWith("[")) {
+                cleanedContent = "[" + cleanedContent;
+              }
+              if (!cleanedContent.trim().endsWith("]")) {
+                cleanedContent = cleanedContent + "]";
+              }
+              
+              try {
+                colorAssignments = JSON.parse(cleanedContent);
+              } catch (fallbackError) {
+                console.error("Fallback JSON parsing also failed:", fallbackError.message);
+                console.error("Falling back to manual extraction of word-color pairs");
+                
+                // Last resort: manually extract word-color pairs using regex
+                colorAssignments = [];
+                const wordColorRegex = /"word"\s*:\s*"([^"]*)"\s*,\s*"color"\s*:\s*"([^"]*)"/g;
+                let match;
+                
+                while ((match = wordColorRegex.exec(cleanedContent)) !== null) {
+                  colorAssignments.push({
+                    word: match[1],
+                    color: match[2]
+                  });
+                }
+                
+                if (colorAssignments.length === 0) {
+                  // If all else fails, create default white assignments
+                  const words = directData.text.split(' ');
+                  colorAssignments = words.map(word => ({ word, color: 'white' }));
+                  console.warn(`Created default white color assignments for ${words.length} words`);
+                } else {
+                  console.log(`Extracted ${colorAssignments.length} word-color pairs using regex`);
+                }
+              }
+            }
+            
             apiSuccess = true;
             console.log(`Color analysis completed successfully with ${colorAssignments.length} color assignments`);
             break;
           } catch (parseError) {
             console.error('Failed to parse API response content:', importanceData.choices[0].message.content);
-            throw new Error(`Failed to parse API response: ${parseError.message}`);
+            // Don't throw here, just log the error and let the retry mechanism handle it
+            console.error(`Parse error: ${parseError.message}`);
           }
         } catch (colorError) {
           console.error(`Color analysis attempt ${colorAttempt} failed: ${colorError.message}`);
@@ -626,6 +687,8 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             // Create default color assignments (all white)
             const words = directData.text.split(' ');
             colorAssignments = words.map(word => ({ word, color: 'white' }));
+            apiSuccess = true; // Mark as success with fallback colors
+            console.log(`Created default color assignments for ${words.length} words`);
           }
         }
       }
