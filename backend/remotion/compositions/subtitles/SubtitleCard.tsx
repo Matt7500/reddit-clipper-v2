@@ -1,7 +1,17 @@
 import { useCurrentFrame, interpolate, Easing } from 'remotion';
 import React, { useEffect } from 'react';
-import jelleeFont from '../../assets/fonts/Jellee-Roman.ttf';
-import robotoFont from '../../assets/Roboto-Bold.ttf';
+
+// S3 asset utility function
+const getS3AssetUrl = (path: string) => {
+  const bucketName = process.env.AWS_S3_ASSETS_BUCKET || 'reddit-clipper-assets';
+  return `https://${bucketName}.s3.us-east-1.amazonaws.com/${path}`;
+};
+
+// S3 asset paths
+const s3Assets = {
+  jelleeFont: getS3AssetUrl('fonts/Jellee-Roman.ttf'),
+  robotoFont: getS3AssetUrl('fonts/Roboto-Bold.ttf')
+};
 
 interface Props {
   text: string;
@@ -47,24 +57,24 @@ export const SubtitleCard: React.FC<Props> = ({
     }
   }, [font, fontUrl]);
 
-  // Load default Jellee font as fallback
+  // Load default Jellee font from S3 as fallback
   useEffect(() => {
-    const defaultFontFace = new FontFace('Jellee', `url(${jelleeFont})`);
+    const defaultFontFace = new FontFace('Jellee', `url(${s3Assets.jelleeFont})`);
     defaultFontFace.load().then((loadedFace) => {
       (document.fonts as any).add(loadedFace);
     }).catch((error) => {
-      console.error('Error loading Jellee font:', error);
+      console.error('Error loading Jellee font from S3:', error);
     });
   }, []);
   
-  // Load Roboto font as another fallback
+  // Load Roboto font from S3 as another fallback
   useEffect(() => {
-    const robotoFontFace = new FontFace('Roboto', `url(${robotoFont})`);
+    const robotoFontFace = new FontFace('Roboto', `url(${s3Assets.robotoFont})`);
     robotoFontFace.load().then((loadedFace) => {
       (document.fonts as any).add(loadedFace);
-      console.log('Roboto font loaded in SubtitleCard');
+      console.log('Roboto font loaded from S3 in SubtitleCard');
     }).catch((error) => {
-      console.error('Error loading Roboto font:', error);
+      console.error('Error loading Roboto font from S3:', error);
     });
   }, []);
 

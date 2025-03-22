@@ -107,6 +107,91 @@ let remotionFunction = null;
 let remotionSite = null;
 const SITE_NAME = 'reddit-clipper-production-site';
 
+// Track if assets have been uploaded to Remotion bucket
+let assetsUploadedToRemotionBucket = false;
+
+// Function to ensure required assets are uploaded to Remotion bucket
+async function ensureAssetsInRemotionBucket() {
+  if (assetsUploadedToRemotionBucket || !remotionBucketName) return;
+  
+  try {
+    console.log('Uploading required assets to Remotion bucket...');
+    
+    // List of assets to ensure are in the Remotion bucket
+    const requiredAssets = [
+      // Video assets
+      { localPath: path.join(__dirname, 'remotion/assets/videos/1.mp4'), s3Key: 'assets/videos/1.mp4' },
+      { localPath: path.join(__dirname, 'remotion/assets/videos/2.mp4'), s3Key: 'assets/videos/2.mp4' },
+      { localPath: path.join(__dirname, 'remotion/assets/videos/3.mp4'), s3Key: 'assets/videos/3.mp4' },
+      { localPath: path.join(__dirname, 'remotion/assets/videos/4.mp4'), s3Key: 'assets/videos/4.mp4' },
+      { localPath: path.join(__dirname, 'remotion/assets/videos/5.mp4'), s3Key: 'assets/videos/5.mp4' },
+      { localPath: path.join(__dirname, 'remotion/assets/videos/6.mp4'), s3Key: 'assets/videos/6.mp4' },
+      
+      // UI assets
+      { localPath: path.join(__dirname, 'remotion/assets/badge.png'), s3Key: 'assets/badge.png' },
+      { localPath: path.join(__dirname, 'remotion/assets/bubble.svg'), s3Key: 'assets/bubble.svg' },
+      { localPath: path.join(__dirname, 'remotion/assets/share.svg'), s3Key: 'assets/share.svg' },
+      
+      // Font assets
+      { localPath: path.join(__dirname, 'remotion/assets/Roboto-Bold.ttf'), s3Key: 'fonts/Roboto-Bold.ttf' },
+      { localPath: path.join(__dirname, 'remotion/assets/fonts/Jellee-Roman.ttf'), s3Key: 'assets/fonts/Jellee-Roman.ttf' }
+    ];
+    
+    // Check each asset and upload if it doesn't exist
+    for (const asset of requiredAssets) {
+      try {
+        // Check if asset already exists in bucket
+        const getObjectCommand = new GetObjectCommand({
+          Bucket: remotionBucketName,
+          Key: asset.s3Key
+        });
+        
+        try {
+          // Try to head the object to see if it exists
+          await s3Client.send(getObjectCommand);
+          console.log(`Asset already exists in Remotion bucket: ${asset.s3Key}`);
+        } catch (headError) {
+          // Object doesn't exist, upload it
+          if (headError.name === 'NoSuchKey' || headError.name === 'NotFound') {
+            console.log(`Uploading asset to Remotion bucket: ${asset.s3Key}`);
+            if (fs.existsSync(asset.localPath)) {
+              await uploadToS3(asset.localPath, asset.s3Key);
+              console.log(`Successfully uploaded: ${asset.s3Key}`);
+            } else {
+              console.warn(`Local asset not found: ${asset.localPath}`);
+            }
+          } else {
+            throw headError;
+          }
+        }
+      } catch (assetError) {
+        console.error(`Error processing asset ${asset.s3Key}:`, assetError);
+        // Continue with other assets
+      }
+    }
+    
+    // Create and upload a config file for the HookVideo component with the bucket URL
+    const configContent = JSON.stringify({
+      bucketName: remotionBucketName,
+      region: AWS_REGION,
+      timestamp: new Date().toISOString()
+    });
+    
+    const configPath = path.join(__dirname, 'tmp', 'remotion-config.json');
+    if (!fs.existsSync(path.dirname(configPath))) {
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    }
+    fs.writeFileSync(configPath, configContent);
+    await uploadToS3(configPath, 'config/remotion-config.json');
+    
+    console.log('Required assets uploaded to Remotion bucket');
+    assetsUploadedToRemotionBucket = true;
+  } catch (error) {
+    console.error('Error ensuring assets in Remotion bucket:', error);
+    // Do not set assetsUploadedToRemotionBucket to true if there was an error
+  }
+}
+
 const initializeLambda = async () => {
   try {
     console.log('Initializing Lambda with params:', {
@@ -213,6 +298,9 @@ const initializeLambda = async () => {
     } else {
       console.log('Using existing Remotion site:', JSON.stringify(remotionSite, null, 2));
     }
+    
+    // Now that the bucket is initialized, upload required assets
+    await ensureAssetsInRemotionBucket();
     
     return remotionFunction;
   } catch (error) {
@@ -766,11 +854,6 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       // Continue despite error - the render will fail if the site is truly inaccessible
     }
     
-    // 5. Upload small video assets for HookVideo component
-    console.log('Uploading small video assets for HookVideo component...');
-    const smallVideoAssets = {};
-    const smallVideoFrames = {};
-    
     // Log progress updates to client
     res.write(JSON.stringify({
       type: 'status_update',
@@ -778,96 +861,12 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       progress: 70
     }) + '\n\n');
     
-    // Upload video files
-    for (let i = 1; i <= 6; i++) {
-      try {
-        console.log(`Uploading small video ${i} to S3...`);
-        const videoPath = path.join(__dirname, `remotion/assets/videos/${i}.mp4`);
-        if (!fs.existsSync(videoPath)) {
-          console.warn(`Small video file not found: ${videoPath}`);
-          continue;
-        }
-        
-        const videoS3Key = `videos/small/${userId}/${timestamp}-video-${i}.mp4`;
-        const videoS3Url = await uploadToS3(videoPath, videoS3Key);
-        smallVideoAssets[`video${i}`] = videoS3Url;
-        s3Assets.push(videoS3Key);
-        console.log(`Successfully uploaded small video ${i} to S3: ${videoS3Url}`);
-      } catch (videoError) {
-        console.error(`Error uploading small video ${i} to S3: ${videoError.message}`);
-        // Continue without this video
-      }
-      
-      // Upload frame images as fallbacks
-      try {
-        console.log(`Uploading frame ${i} to S3...`);
-        const framePath = path.join(__dirname, `remotion/assets/videos/frames/${i}.jpg`);
-        if (!fs.existsSync(framePath)) {
-          console.warn(`Frame file not found: ${framePath}`);
-          continue;
-        }
-        
-        const frameS3Key = `videos/frames/${userId}/${timestamp}-frame-${i}.jpg`;
-        const frameS3Url = await uploadToS3(framePath, frameS3Key);
-        smallVideoFrames[`frame${i}`] = frameS3Url;
-        s3Assets.push(frameS3Key);
-        console.log(`Successfully uploaded frame ${i} to S3: ${frameS3Url}`);
-      } catch (frameError) {
-        console.error(`Error uploading frame ${i} to S3: ${frameError.message}`);
-        // Continue without this frame
-      }
-      
-      // Update progress
-      res.write(JSON.stringify({
-        type: 'status_update',
-        status: 'uploading_assets',
-        progress: 70 + Math.floor((i / 6) * 10)
-      }) + '\n\n');
-    }
-    
-    // Upload other UI assets
-    console.log('Uploading UI assets for HookVideo component...');
-    let badgeUrl, bubbleUrl, shareUrl;
-    try {
-      const badgePath = path.join(__dirname, 'remotion/assets/badge.png');
-      if (fs.existsSync(badgePath)) {
-        const badgeS3Key = `assets/${userId}/${timestamp}-badge.png`;
-        badgeUrl = await uploadToS3(badgePath, badgeS3Key);
-        s3Assets.push(badgeS3Key);
-        console.log(`Successfully uploaded badge asset to S3: ${badgeUrl}`);
-      } else {
-        console.warn('Badge asset not found:', badgePath);
-      }
-      
-      const bubblePath = path.join(__dirname, 'remotion/assets/bubble.svg');
-      if (fs.existsSync(bubblePath)) {
-        const bubbleS3Key = `assets/${userId}/${timestamp}-bubble.svg`;
-        bubbleUrl = await uploadToS3(bubblePath, bubbleS3Key);
-        s3Assets.push(bubbleS3Key);
-        console.log(`Successfully uploaded bubble asset to S3: ${bubbleUrl}`);
-      } else {
-        console.warn('Bubble asset not found:', bubblePath);
-      }
-      
-      const sharePath = path.join(__dirname, 'remotion/assets/share.svg');
-      if (fs.existsSync(sharePath)) {
-        const shareS3Key = `assets/${userId}/${timestamp}-share.svg`;
-        shareUrl = await uploadToS3(sharePath, shareS3Key);
-        s3Assets.push(shareS3Key);
-        console.log(`Successfully uploaded share asset to S3: ${shareUrl}`);
-      } else {
-        console.warn('Share asset not found:', sharePath);
-      }
-    } catch (assetError) {
-      console.error(`Error uploading UI assets to S3: ${assetError.message}`);
-      // Continue without UI assets
-    }
-    
-    // Print summary of all assets
-    console.log('Summary of uploaded assets:');
-    console.log('Videos:', smallVideoAssets);
-    console.log('Frames:', smallVideoFrames);
-    console.log('UI assets:', { badgeUrl, bubbleUrl, shareUrl });
+    // Update progress
+    res.write(JSON.stringify({
+      type: 'status_update',
+      status: 'uploading_assets',
+      progress: 80
+    }) + '\n\n');
     
     // Prepare input props for Remotion Lambda
     const inputProps = {
@@ -888,14 +887,9 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       has_background_music,
       subtitle_size,
       stroke_size,
-      // Add assetUrls for HookVideo component
-      assetUrls: {
-        badge: badgeUrl,
-        bubble: bubbleUrl,
-        share: shareUrl,
-        frames: smallVideoFrames,
-        videos: smallVideoAssets
-      }
+      // Add bucket information
+      bucketName: remotionBucketName,
+      bucketRegion: AWS_REGION
     };
     
     console.log('Remotion input props prepared:', {
@@ -922,6 +916,8 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
         inputProps,
         codec: 'h264',
         imageFormat: 'jpeg',
+        videoBitrate: '6M',
+        x264Preset: 'fast',
         maxRetries: 3,
         framesPerLambda: 20, // Lower value for better reliability
         concurrencyPerLambda: 3, // Reduce concurrency to avoid overwhelming Lambda
@@ -1706,8 +1702,116 @@ app.post('/api/generate-script', async (req, res) => {
 - Antagonist should be unreasonable but believable
 - The karma/comeuppance must feel proportional and ironic
 - End with the antagonist suffering immediate consequences
+- Use dry humor and sarcasm to make the story more engaging
 - No extended reflection or aftermath after the payoff
 - The first sentence of the SETUP step must be designed to draw interest from the reader so they are compelled to keep reading.
+
+---
+
+##STORY EXAMPLES
+#IGNORE the story's plot. You are only using these for the writing style and the structure:
+
+#EXAMPLE STORY 1:
+I work in a bar, and one night, this guy walked in acting like he owned the place. He was buying drinks for every girl around him, bragging about how he made over $10 million a year.
+
+Every word out of his mouth was some crazy flex. "Oh yeah, I just got back from my third vacation this month. I only drink imported whiskey. None of this basic stuff. I might buy a yacht this weekend, but I already have two, so I don't know."
+
+And these girls? They were eating it up. They were asking for his number, laughing at everything he said, hanging on to every word. Dude was living the dream.
+
+But here's the funny part. I was watching all of it, because I was the one handing out the drinks, and the entire time, the girls were paying for their own.
+
+He sat there for hours, living off their reactions alone. Then the bar started emptying out, and it was time for him to pay. His total was $500, which, you know, should be nothing for a guy who makes $10 million a year.
+
+But the second I put the check in front of him, he froze. His face went pale. He looked around like he was planning an escape route, and then he actually tried to run, full sprint, straight for the exit. Didn't even hesitate.
+
+Luckily, our security was already watching him. They tackled him so fast, I thought he owed them money. Dragged him right back inside, sat him down, and we all waited for him to explain himself. And that's when the truth unraveled.
+
+Dude wasn't just lying about his money. His name was fake. His job was fake. Even the designer clothes he was flexing? Not his. And the girls? They were dying laughing.
+
+One of them even walked up, grabbed his phone, and said, "Can we remove our numbers from this?" Dude started the night a millionaire, and he ended it in debt to a bar.
+
+#EXAMPLE STORY 2:
+Taking my two-year-old daughter to the park was supposed to be a normal afternoon. She loved the swings, and I loved watching her laugh every time she kicked her little feet into the air.
+
+Then I noticed her, a woman standing nearby, arms crossed, staring at us. At first, I thought nothing of it. Parents watch their kids all the time.
+
+But then she marched over with this fake polite smile, and asked why I was with a random child. I told her plainly that she was my daughter.
+
+That's when things got weird. She narrowed her eyes and asked where her mother was. I said she was at home, confused as to why that even mattered. But Karen wasn't satisfied.
+
+She crouched down in front of my daughter and asked if she knew me. That's when I realized she actually thought I was kidnapping my own child.
+
+I told her to back off, but she gasped like I had just confessed to something terrible.
+
+Before I knew it, she was on the phone with the cops, loudly claiming that a suspicious man was at the park with a little girl who looked terrified.
+
+So now I was standing there, trying not to lose my mind while waiting for the cops to arrive. When they did, they immediately saw my daughter happily swinging, oblivious to the insanity unfolding. I explained the situation and they asked her who I was.
+
+She excitedly yelled, "Dad," and reached for me. I thought that would be the end of it, but Karen, in full hero mode, grabbed my daughter's hand and said she'd take her somewhere safe.
+
+Before I could even react, one of the cops stopped her. She started screaming that she was saving my child while pushing the cops off her. Meanwhile, my daughter was still giggling on the swing, completely unbothered.
+
+The Karen made such a scene that the cops had to take her away in the police car. And after this, I'm never letting a Karen near my daughter again.
+
+#EXAMPLE STORY 3:
+Growing up with a little brother meant constant fights, but this was by far the worst one.
+
+It started when I was sitting on the couch minding my own business, flipping through channels when my little brother stormed into the room.
+
+He planted his feet, crossed his arms, and in the most annoying voice possible said, "I was watching that." I didn't even look at him, not anymore.
+
+Cue the meltdown. First it was the classic, "Mom, he's not letting me watch TV," but Mom was in the other room, probably enjoying the silence for once.
+
+Then it escalated, stomping, whining, throwing himself onto the floor like his legs just gave out. But I held my ground. I had the remote. I had the power, and I wasn't about to give it up to a kid just because he wanted to watch it.
+
+Then something in him snapped. With pure fury, he grabbed the remote, wound up like a baseball pitcher in the World Series, and chucked it straight at the TV.
+
+The remote spun through the air, my brother's face filled with instant regret, and then the remote slammed into the screen.
+
+For a moment, everything was fine, then the crack appeared. It spread like a spiderweb, crawling across the glass as the screen flickered, and then the screen went black. Silence.
+
+I turned to my little brother, he turned to me, "Oh, you're so dead." But then things got even worse.
+
+This little demon child took one look at the TV, then at me, and burst into tears. He crumbled to the floor, sobbing uncontrollably. Right on cue, our mom walked in. She saw the destroyed TV, she saw the innocent little victim on the floor hiccuping through his sobs, she saw me standing there looking like I had just committed a war crime.
+
+"What did you do?" she said. I pointed at the remote, I pointed at the shattered screen, I pointed at my little brother who was obviously fake crying.
+
+Dad sighed, crossed his arms, and said the words that still haunt me to this day, "You're grounded for a month." I've never felt so betrayed.
+
+#EXAMPLE STORY 4:
+I work at a salon, and one day, a customer came in and tried to pay using a coupon. Not just any coupon, a coupon that had expired five years ago.
+
+I politely told them, \"Sorry, but this coupon is expired. I can't accept it.\" And that's when all logic left the building. They immediately got defensive.
+
+"Well, I don't have any other money, so you have to take it." I explained as nicely as possible that expired coupons don't work, and that's when they lost their mind.
+
+"You're breaking the law." I blinked. 
+
+"What?"
+
+"It is illegal to refuse a coupon under the law. You have to accept it no matter what." 
+
+"Oh?" So now we're in a courtroom. I told them that no such law exists, and that they had absolutely no idea what they were talking about.
+
+And that's when they went for the nuclear option. "I have a degree in law."
+
+Oh, okay, a fully licensed lawyer fighting to the death over a five-year-old salon coupon.
+
+At this point, I was holding back laughter. They kept going, telling me how they were smarter than I will ever be, that I was ruining their day, and that I would never make it anywhere in life.
+
+I took a deep breath, looked them dead in the eyes, and said, "If you were really that smart, you would have checked the expiration date."
+
+They froze. Their mouth twitched. Their brain was rebooting. And just to put the final nail in the coffin, I pulled out my phone and looked it up.
+
+Guess what? That coupon law they were so sure about didn't exist. I turned my screen around and showed them. Silence.
+
+Then, without another word, they stormed out in pure humiliation. But on the way, they pushed on a door that said "Pull". Not once, not twice, three times.
+
+At this point, I was just watching like it was a nature documentary.
+
+"Finally," I said, "Try pulling."
+
+They yanked the door open so aggressively they almost tripped, and right before stepping outside, they turned back one last time and yelled, "I'm still smarter than you."
 
 ---
 
@@ -1863,7 +1967,9 @@ When given a hook or topic, I will generate a complete story following these exa
               ---
               
               ### **Output Format:**  
-              A **single, engaging Reddit-style question** that follows these rules and keeps **structure variety.** and **no asterisks!** or markdown formatting. Just plain text.`
+              A **single, enga
+              
+              ## DO NOT EXCEED 12 WORDS IN THE HOOK YOU CREATE`
             },
             {
               role: "user",

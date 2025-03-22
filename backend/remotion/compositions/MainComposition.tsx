@@ -50,9 +50,11 @@ interface Props {
     badge?: string;
     bubble?: string;
     share?: string;
-    frames?: Record<string, string>;
-    videos?: Record<string, string>;
   };
+
+  // Bucket information for S3 assets
+  bucketName?: string;
+  bucketRegion?: string;
 }
 
 export const MainComposition: React.FC<Props> = ({
@@ -84,6 +86,10 @@ export const MainComposition: React.FC<Props> = ({
   
   // Asset URLs
   assetUrls = {},
+
+  // Bucket information for S3 assets
+  bucketName,
+  bucketRegion,
 }) => {
   const { fps } = useVideoConfig();
   const scriptDurationInFrames = Math.ceil(scriptAudioDurationInSeconds * fps);
@@ -123,6 +129,8 @@ export const MainComposition: React.FC<Props> = ({
             audioUrl={audioUrl}
             audioDurationInSeconds={audioDurationInSeconds}
             assetUrls={assetUrls}
+            bucketName={bucketName}
+            bucketRegion={bucketRegion}
           />
         </Series.Sequence>
         <Series.Sequence durationInFrames={scriptDurationInFrames}>

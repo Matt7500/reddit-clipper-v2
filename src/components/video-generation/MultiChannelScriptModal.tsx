@@ -34,6 +34,7 @@ interface ChannelScript {
   hook: string;
   script: string;
   expanded: boolean;
+  selected: boolean;
 }
 
 interface MultiChannelScriptModalProps {
@@ -58,7 +59,8 @@ export function MultiChannelScriptModal({
       channelId: channel.id,
       hook: "",
       script: "",
-      expanded: true
+      expanded: true,
+      selected: true
     }))
   );
   const [activeTab, setActiveTab] = useState<string>(channels.length > 0 ? channels[0].id : "");
@@ -110,7 +112,8 @@ export function MultiChannelScriptModal({
       channelId: channel.id,
       hook: "",
       script: "",
-      expanded: true
+      expanded: true,
+      selected: true
     })));
     if (channels.length > 0 && !channels.find(c => c.id === activeTab)) {
       setActiveTab(channels[0].id);
@@ -159,13 +162,40 @@ export function MultiChannelScriptModal({
   };
 
   const handleGenerateAll = () => {
-    // Filter out any channels with empty scripts
+    // Filter out any channels with empty scripts or that aren't selected
     const validScripts = channelScripts.filter(cs => 
-      cs.hook.trim() !== "" && cs.script.trim() !== ""
+      cs.selected && cs.hook.trim() !== "" && cs.script.trim() !== ""
     );
     
     if (validScripts.length === 0) {
-      // Show error or toast
+      toast({
+        title: "No valid content to generate",
+        description: "Please make sure at least one channel has both a hook and script completed.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return;
+    }
+    
+    // Check if any selected channels are missing content
+    const selectedChannels = channelScripts.filter(cs => cs.selected);
+    const incompleteChannels = selectedChannels.filter(cs => 
+      cs.hook.trim() === "" || cs.script.trim() === ""
+    );
+    
+    if (incompleteChannels.length > 0) {
+      // Get channel names for incomplete channels
+      const incompleteChannelNames = incompleteChannels.map(cs => {
+        const channel = channels.find(c => c.id === cs.channelId);
+        return channel?.nickname || channel?.name || "Unknown channel";
+      });
+      
+      toast({
+        title: "Incomplete content detected",
+        description: `The following channels are missing a hook or script: ${incompleteChannelNames.join(", ")}`,
+        variant: "destructive",
+        duration: 5000,
+      });
       return;
     }
     
@@ -363,10 +393,13 @@ export function MultiChannelScriptModal({
   // Check if any kind of generation is happening
   const isAnyGenerationActive = generatingSingleChannel !== null || generatingHook !== null;
 
-  // Count how many channels have content
+  // Count how many channels have content and are selected
   const channelsWithContent = channelScripts.filter(cs => 
-    cs.hook.trim() !== "" && cs.script.trim() !== ""
+    cs.selected && cs.hook.trim() !== "" && cs.script.trim() !== ""
   ).length;
+
+  // Count total selected channels
+  const selectedChannelsCount = channelScripts.filter(cs => cs.selected).length;
 
   // Check generation type for a specific channel
   const getGenerationTypeForChannel = (channelId: string) => {
@@ -409,6 +442,15 @@ export function MultiChannelScriptModal({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [activeTab, channels]);
+
+  // Toggle selected state for a channel
+  const toggleChannelSelection = (channelId: string) => {
+    setChannelScripts(prev => 
+      prev.map(cs => 
+        cs.channelId === channelId ? { ...cs, selected: !cs.selected } : cs
+      )
+    );
+  };
 
   // Create a custom DialogContent component without the close button
   const CustomDialogContent = React.forwardRef<
@@ -577,55 +619,87 @@ export function MultiChannelScriptModal({
               </div>
               <TabsList className="bg-transparent flex space-x-3 p-2">
                 {channels.slice(0, 5).map(channel => {
-                  const hasContent = channelScripts.find(cs => cs.channelId === channel.id)?.hook.trim() !== "" && 
-                                    channelScripts.find(cs => cs.channelId === channel.id)?.script.trim() !== "";
+                  const channelScript = channelScripts.find(cs => cs.channelId === channel.id);
+                  const hasHook = channelScript?.hook.trim() !== "";
+                  const hasScript = channelScript?.script.trim() !== "";
+                  const hasContent = hasHook && hasScript;
+                  const isSelected = channelScript?.selected || false;
                   const currentIndex = channels.findIndex(c => c.id === channel.id);
                   const showAnimation = completedAnimations[channel.id];
                   const isGenerating = generatingSingleChannel === channel.id;
+                  
+                  // Only show warning if EXACTLY one of hook or script is present
+                  const hasPartialContent = (hasHook && !hasScript) || (!hasHook && hasScript);
                   
                   return (
                     <TabsTrigger 
                       key={channel.id} 
                       value={channel.id}
                       className={cn(
-                        "flex items-center gap-2 rounded-md",
-                        "data-[state=active]:bg-primary/20 data-[state=active]:text-primary relative",
+                        "flex items-center gap-2 rounded-md relative",
+                        "data-[state=active]:bg-primary/20 data-[state=active]:text-primary",
                         "border border-white/10 hover:bg-[#2A2A2A]",
-                        "mt-0.5",
+                        "mt-0.5 pr-2 pl-2 py-2",
                         "transition-all duration-300 ease-in-out",
-                        hasContent ? "pr-8 pl-4 py-2" : "px-4 py-2",
-                        hasContent && showAnimation && "animate-tab-expand"
+                        "min-w-[120px] justify-between",
+                        !isSelected && "opacity-50"
                       )}
                     >
-                      <div className={cn(
-                        "w-7 h-7 rounded-full overflow-hidden border border-white/10 bg-[#1A1A1A] flex items-center justify-center flex-shrink-0",
-                        isGenerating && "animate-pulse"
-                      )}>
-                        {channel.image_url ? (
-                          <img 
-                            src={channel.image_url} 
-                            alt={channel.name} 
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-white text-xs font-bold">
-                            {(channel.nickname || channel.name).charAt(0).toUpperCase()}
-                          </span>
+                      {/* Channel identity part */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className={cn(
+                          "w-7 h-7 rounded-full overflow-hidden border border-white/10 bg-[#1A1A1A] flex items-center justify-center flex-shrink-0",
+                          isGenerating && "animate-pulse"
+                        )}>
+                          {channel.image_url ? (
+                            <img 
+                              src={channel.image_url} 
+                              alt={channel.name} 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-white text-xs font-bold">
+                              {(channel.nickname || channel.name).charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <span className="flex-1 mr-1">
+                          {channel.nickname || channel.name}
+                        </span>
+                      </div>
+                      
+                      {/* Status indicators */}
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                        {hasContent && (
+                          <div 
+                            className={cn(
+                              "w-5 h-5 rounded-full bg-green-500 flex items-center justify-center",
+                              showAnimation && "animate-scale-in"
+                            )}
+                          >
+                            <Check className="w-3 h-3 text-black" />
+                          </div>
+                        )}
+                        
+                        {hasPartialContent && isSelected && (
+                          <div 
+                            className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center"
+                            title={hasHook ? "Missing script" : "Missing hook"}
+                          >
+                            <span className="text-black text-xs font-bold">!</span>
+                          </div>
                         )}
                       </div>
-                      <span className="truncate max-w-[100px]">
-                        {channel.nickname || channel.name}
-                      </span>
-                      {hasContent && (
-                        <div 
-                          className={cn(
-                            "absolute top-1/2 -translate-y-1/2 right-2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center",
-                            showAnimation && "animate-scale-in"
-                          )}
-                        >
-                          <Check className="w-3 h-3 text-black" />
-                        </div>
-                      )}
+                      
+                      {/* Selection toggle - no visual indicator, just click handler */}
+                      <div 
+                        className="absolute top-0 left-0 w-full h-full cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleChannelSelection(channel.id);
+                        }}
+                      >
+                      </div>
                     </TabsTrigger>
                   );
                 })}
@@ -841,7 +915,7 @@ export function MultiChannelScriptModal({
           </Button>
           <Button
             onClick={handleGenerateAll}
-            disabled={isAnyGenerationActive || generatingSingleChannel !== null || !isValid}
+            disabled={isAnyGenerationActive || generatingSingleChannel !== null || channelsWithContent === 0}
             className="bg-primary hover:bg-primary/90 text-white font-medium gap-2 px-4 py-1 h-9 text-sm"
           >
             {isAnyGenerationActive ? (
@@ -852,7 +926,7 @@ export function MultiChannelScriptModal({
             ) : (
               <>
                 <Play className="w-4 h-4" />
-                Generate Videos ({channelsWithContent}/{channels.length})
+                Generate Videos ({channelsWithContent}/{selectedChannelsCount})
               </>
             )}
           </Button>

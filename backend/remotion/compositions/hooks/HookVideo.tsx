@@ -1,35 +1,12 @@
 import { useCurrentFrame, interpolate, Easing, Audio, useVideoConfig, OffthreadVideo } from 'remotion';
 import React from 'react';
-// Remove Google Fonts import
-// import { loadFont } from "@remotion/google-fonts/Roboto";
-// Import local Roboto font instead
-import robotoFont from '../../assets/Roboto-Bold.ttf';
-
-// We'll use these imports as fallbacks for local rendering
-import verificationBadge from '../../assets/badge.png';
-import bubble from '../../assets/bubble.svg';
-import share from '../../assets/share.svg';
-// Keep frame imports for static images
-import frame1 from '../../assets/videos/frames/1.jpg';
-import frame2 from '../../assets/videos/frames/2.jpg';
-import frame3 from '../../assets/videos/frames/3.jpg';
-import frame4 from '../../assets/videos/frames/4.jpg';
-import frame5 from '../../assets/videos/frames/5.jpg';
-import frame6 from '../../assets/videos/frames/6.jpg';
-
-// Import video sources
-import video1 from '../../assets/videos/1.mp4';
-import video2 from '../../assets/videos/2.mp4';
-import video3 from '../../assets/videos/3.mp4';
-import video4 from '../../assets/videos/4.mp4';
-import video5 from '../../assets/videos/5.mp4';
-import video6 from '../../assets/videos/6.mp4';
-
 // Replace Google Fonts loading with a constant
 const fontFamily = 'Roboto';
 
-// Load font in component instead (see HookVideo component below)
-// const { fontFamily } = loadFont();
+// S3 asset utility function
+const getS3AssetUrl = (bucketName: string, region: string, path: string) => {
+  return `https://${bucketName}.s3.${region}.amazonaws.com/${path}`;
+};
 
 interface Props {
   channelName?: string;
@@ -42,69 +19,43 @@ interface Props {
     badge?: string;
     bubble?: string;
     share?: string;
-    frames?: Record<string, string>;
-    videos?: Record<string, string>;
   };
+  // Add bucket info props
+  bucketName?: string;
+  bucketRegion?: string;
 }
 
-// Helper function to get asset URL or fallback to local import
-const getAssetUrl = (assetUrls: any, key: string, fallback: any) => {
+// Helper function to get asset URL or fallback to S3 asset
+const getAssetUrl = (assetUrls: any, key: string, s3Assets: any, fallbackKey: string) => {
   if (assetUrls && assetUrls[key]) {
     return assetUrls[key];
   }
-  return fallback;
-};
-
-// Helper function to get frame URL
-const getFrameUrl = (assetUrls: any, index: number, fallback: any) => {
-  if (assetUrls && assetUrls.frames && assetUrls.frames[`frame${index}`]) {
-    return assetUrls.frames[`frame${index}`];
-  }
-  return fallback;
+  return s3Assets[fallbackKey];
 };
 
 // Helper function to get video URL
-const getVideoUrl = (assetUrls: any, index: number, fallback: any) => {
+const getVideoUrl = (assetUrls: any, index: number, s3Assets: any) => {
   if (assetUrls && assetUrls.videos && assetUrls.videos[`video${index}`]) {
     return assetUrls.videos[`video${index}`];
   }
-  return fallback;
+  return s3Assets.videos[`video${index}`];
 };
 
-// Replace the VideoComponent with OffthreadVideo 
+// VideoComponent without frame preloading
 const VideoComponent: React.FC<{
   src: string;
   style: React.CSSProperties;
   alt?: string;
-  index: number;
-}> = ({ src, style, alt = 'Video', index }) => {
-  const frame = useCurrentFrame();
-  
-  // Get fallback frame for initial display
-  let fallbackFrame;
-  switch (index) {
-    case 1: fallbackFrame = frame1; break;
-    case 2: fallbackFrame = frame2; break;
-    case 3: fallbackFrame = frame3; break;
-    case 4: fallbackFrame = frame4; break;
-    case 5: fallbackFrame = frame5; break;
-    case 6: fallbackFrame = frame6; break;
-    default: fallbackFrame = frame1;
-  }
-
-  // If we're in the first few frames, show the static image
-  // This provides a nice placeholder while video loads
-  if (frame < 5) {
-    return <img src={fallbackFrame} style={style} alt={alt} />;
-  }
-
-  // After first few frames, use OffthreadVideo
+}> = ({ src, style, alt = 'Video' }) => {
+  // Use OffthreadVideo directly without frame preloading
   return (
     <OffthreadVideo
       src={src}
       style={style}
       className="remotion-video"
       muted
+      toneMapped={false} // Disable tone mapping for better performance
+      pauseWhenBuffering={true} // Pause when buffering (will be default in Remotion 5.0)
     />
   );
 };
@@ -115,19 +66,37 @@ export const HookVideo: React.FC<Props> = ({
   hookText,
   audioUrl,
   audioDurationInSeconds = 3,
-  assetUrls = {}
+  assetUrls = {},
+  bucketName = 'reddit-clipper-assets',
+  bucketRegion = 'us-east-1'
 }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   
-  // Load the Roboto font when the component mounts
+  // Create S3 asset paths using the provided bucket info
+  const s3Assets = React.useMemo(() => ({
+    robotoFont: getS3AssetUrl(bucketName, bucketRegion, 'fonts/Roboto-Bold.ttf'),
+    verificationBadge: getS3AssetUrl(bucketName, bucketRegion, 'assets/badge.png'),
+    bubble: getS3AssetUrl(bucketName, bucketRegion, 'assets/bubble.svg'),
+    share: getS3AssetUrl(bucketName, bucketRegion, 'assets/share.svg'),
+    videos: {
+      video1: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/1.mp4'),
+      video2: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/2.mp4'),
+      video3: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/3.mp4'),
+      video4: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/4.mp4'),
+      video5: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/5.mp4'),
+      video6: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/6.mp4'),
+    }
+  }), [bucketName, bucketRegion]);
+  
+  // Load the Roboto font when the component mounts from S3
   React.useEffect(() => {
-    const customFontFace = new FontFace('Roboto', `url(${robotoFont})`);
+    const customFontFace = new FontFace('Roboto', `url(${s3Assets.robotoFont})`);
     customFontFace.load().then((loadedFace) => {
       (document.fonts as any).add(loadedFace);
-      console.log('Roboto font loaded from local assets');
+      console.log('Roboto font loaded from S3');
     }).catch((error) => {
-      console.error('Error loading Roboto font:', error);
+      console.error('Error loading Roboto font from S3:', error);
     });
   }, []);
   
@@ -142,36 +111,13 @@ export const HookVideo: React.FC<Props> = ({
   
   const videoIndex = getVideoIndex();
   
-  // Get video URL based on the index
-  let videoSrc;
+  // Get video URL based on the index from S3
+  let videoSrc = getVideoUrl(assetUrls, videoIndex, s3Assets);
   
-  switch (videoIndex) {
-    case 1:
-      videoSrc = getVideoUrl(assetUrls, 1, video1);
-      break;
-    case 2:
-      videoSrc = getVideoUrl(assetUrls, 2, video2);
-      break;
-    case 3:
-      videoSrc = getVideoUrl(assetUrls, 3, video3);
-      break;
-    case 4:
-      videoSrc = getVideoUrl(assetUrls, 4, video4);
-      break;
-    case 5:
-      videoSrc = getVideoUrl(assetUrls, 5, video5);
-      break;
-    case 6:
-      videoSrc = getVideoUrl(assetUrls, 6, video6);
-      break;
-    default:
-      videoSrc = getVideoUrl(assetUrls, 1, video1);
-  }
-  
-  // Get other asset URLs
-  const badgeUrl = getAssetUrl(assetUrls, 'badge', verificationBadge);
-  const bubbleUrl = getAssetUrl(assetUrls, 'bubble', bubble);
-  const shareUrl = getAssetUrl(assetUrls, 'share', share);
+  // Get other asset URLs from S3
+  const badgeUrl = getAssetUrl(assetUrls, 'badge', s3Assets, 'verificationBadge');
+  const bubbleUrl = getAssetUrl(assetUrls, 'bubble', s3Assets, 'bubble');
+  const shareUrl = getAssetUrl(assetUrls, 'share', s3Assets, 'share');
   
   // Timing calculations
   const initialGrowthFrames = 12; // 12 frames for initial growth
@@ -412,16 +358,9 @@ export const HookVideo: React.FC<Props> = ({
               {[1, 2, 3, 4, 5, 6].map(idx => (
                 <VideoComponent
                   key={idx}
-                  src={getVideoUrl(assetUrls, idx, 
-                    idx === 1 ? video1 :
-                    idx === 2 ? video2 :
-                    idx === 3 ? video3 :
-                    idx === 4 ? video4 :
-                    idx === 5 ? video5 : video6
-                  )}
+                  src={getVideoUrl(assetUrls, idx, s3Assets)}
                   style={gifStyle}
                   alt={`Video ${idx}`}
-                  index={idx}
                 />
               ))}
             </div>

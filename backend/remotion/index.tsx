@@ -1,4 +1,4 @@
-import { registerRoot, Composition } from 'remotion';
+import { registerRoot, Composition, staticFile } from 'remotion';
 import { z } from 'zod';
 import React from 'react';
 import { MainComposition } from './compositions/MainComposition';
@@ -31,10 +31,10 @@ const schema = z.object({
   assetUrls: z.object({
     badge: z.string().optional(),
     bubble: z.string().optional(),
-    share: z.string().optional(),
-    frames: z.record(z.string()).optional(),
-    videos: z.record(z.string()).optional()
-  }).optional()
+    share: z.string().optional()
+  }).optional(),
+  bucketName: z.string().optional(),
+  bucketRegion: z.string().optional()
 });
 
 type Props = z.infer<typeof schema>;

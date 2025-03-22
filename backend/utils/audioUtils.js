@@ -526,31 +526,21 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
       let colorAssignments = [];
       let apiSuccess = false;
       
-      // Define models to try in order of preference
-      const openaiModels = ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'];
-      let currentModelIndex = 0;
-      
       // Try to get color analysis with retries
       for (let colorAttempt = 1; colorAttempt <= MAX_RETRIES; colorAttempt++) {
         try {
-          // If we've tried all models, reset to the first one
-          if (currentModelIndex >= openaiModels.length) {
-            currentModelIndex = 0;
-          }
-          
-          const currentModel = openaiModels[currentModelIndex];
-          console.log(`Color analysis attempt ${colorAttempt}/${MAX_RETRIES} using model: ${currentModel}...`);
+          console.log(`Color analysis attempt ${colorAttempt}/${MAX_RETRIES}`);
           
           let importanceResponse;
           if (hasOpenAI) {
-            importanceResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openaiApiKey}`
+                'Authorization': `Bearer ${openrouterApiKey}`
               },
               body: JSON.stringify({
-                model: currentModel,
+                model: 'anthropic/claude-3.7-sonnet:beta',
                 messages: [
                   {
                     role: "system",
@@ -627,7 +617,6 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
           
           if (colorAttempt < MAX_RETRIES) {
             // Try the next model in the list
-            currentModelIndex++;
             console.log(`Switching to next model for retry...`);
             
             console.log(`Waiting ${RETRY_DELAY/1000} seconds before retry...`);
