@@ -15,6 +15,7 @@
     "@remotion/google-fonts": "4.0.278",
     "@remotion/motion-blur": "4.0.278",
     "@remotion/renderer": "4.0.278",
+    "@remotion/lambda": "4.0.278",
     "@remotion/studio": "4.0.278",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
