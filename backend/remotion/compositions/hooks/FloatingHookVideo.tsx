@@ -155,7 +155,7 @@ export const FloatingHookVideo: React.FC<Props> = ({
   // Create floating animation (gentle oscillation on Y axis)
   // This will create a smooth up-and-down floating movement during the growth phase
   const floatAmplitude = 15; // Maximum pixels to move up/down
-  const floatCyclesPerSecond = 1.5; // How many full oscillations per second
+  const floatCyclesPerSecond = 1; // How many full oscillations per second
 
   const floatOffset = frame >= initialGrowthFrames && frame < startShrinkingFrame
     ? floatAmplitude * Math.sin(
