@@ -74,6 +74,13 @@ export const backgroundVideoTypes = [
 
 export type BackgroundVideoType = typeof backgroundVideoTypes[number]['value'];
 
+export const hookAnimationTypes = [
+  { value: 'fall', label: 'Fall Animation' },
+  { value: 'float', label: 'Float Animation' },
+] as const;
+
+export type HookAnimationType = typeof hookAnimationTypes[number]['value'];
+
 export interface APIKeyErrors {
   openai: string;
   openrouter: string;

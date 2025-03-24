@@ -6,8 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, User, Palette, Music } from "lucide-react";
 import { useState, useEffect } from "react";
-import type { Font, StyleOption, Voice, BackgroundVideoType } from "./types";
-import { defaultFonts, styles, backgroundVideoTypes } from "./types";
+import type { Font, StyleOption, Voice, BackgroundVideoType, HookAnimationType } from "./types";
+import { defaultFonts, styles, backgroundVideoTypes, hookAnimationTypes } from "./types";
 
 interface CreateProfileDialogProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ interface CreateProfileDialogProps {
     style: StyleOption;
     has_background_music: boolean;
     background_video_type: BackgroundVideoType;
+    hook_animation_type: HookAnimationType;
     target_duration: number;
     subtitle_size: number;
     stroke_size: number;
@@ -50,6 +51,7 @@ export const CreateProfileDialog = ({
   const [newProfileVoiceId, setNewProfileVoiceId] = useState("");
   const [newProfileStyle, setNewProfileStyle] = useState<StyleOption>('single');
   const [newProfileBackgroundVideoType, setNewProfileBackgroundVideoType] = useState<BackgroundVideoType>('gameplay');
+  const [newProfileHookAnimationType, setNewProfileHookAnimationType] = useState<HookAnimationType>('fall');
   const [newProfileBackgroundMusic, setNewProfileBackgroundMusic] = useState(false);
   const [newProfileTargetDuration, setNewProfileTargetDuration] = useState<number>(60);
   const [newProfileSubtitleSize, setNewProfileSubtitleSize] = useState<number>(64);
@@ -66,6 +68,7 @@ export const CreateProfileDialog = ({
       setNewProfileVoiceId("");
       setNewProfileStyle('single');
       setNewProfileBackgroundVideoType('gameplay');
+      setNewProfileHookAnimationType('fall');
       setNewProfileBackgroundMusic(false);
       setNewProfileTargetDuration(60);
       setNewProfileSubtitleSize(64);
@@ -90,6 +93,7 @@ export const CreateProfileDialog = ({
       voice_id: newProfileVoiceId,
       style: newProfileStyle,
       background_video_type: newProfileBackgroundVideoType,
+      hook_animation_type: newProfileHookAnimationType,
       has_background_music: newProfileBackgroundMusic,
       target_duration: newProfileTargetDuration,
       subtitle_size: newProfileSubtitleSize,
@@ -104,6 +108,7 @@ export const CreateProfileDialog = ({
     setNewProfileVoiceId("");
     setNewProfileStyle('single');
     setNewProfileBackgroundVideoType('gameplay');
+    setNewProfileHookAnimationType('fall');
     setNewProfileBackgroundMusic(false);
     setNewProfileTargetDuration(60);
     setNewProfileSubtitleSize(64);
@@ -117,7 +122,7 @@ export const CreateProfileDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-[#222222] text-white border border-white/10 flex flex-col h-[600px]">
+      <DialogContent className="sm:max-w-[425px] bg-[#222222] text-white border border-white/10 flex flex-col min-h-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Channel Profile</DialogTitle>
           <DialogDescription className="text-muted-foreground">
@@ -326,6 +331,28 @@ export const CreateProfileDialog = ({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-muted-foreground">Hook Animation</label>
+                  <Select 
+                    value={newProfileHookAnimationType} 
+                    onValueChange={(value: HookAnimationType) => setNewProfileHookAnimationType(value)}
+                  >
+                    <SelectTrigger className="bg-[#2A2A2A] border-[#3A3A3A]">
+                      <SelectValue placeholder="Select animation type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#222222] border border-[#3A3A3A]">
+                      {hookAnimationTypes.map((type) => (
+                        <SelectItem 
+                          key={type.value} 
+                          value={type.value}
+                          className="text-white hover:bg-[#2A2A2A] focus:bg-[#2A2A2A] cursor-pointer"
+                        >
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex gap-4">
                   <div className="flex-1 space-y-2">

@@ -249,6 +249,7 @@ export const Settings = () => {
         style: editingProfile.style,
         has_background_music: editingProfile.has_background_music,
         background_video_type: editingProfile.background_video_type,
+        hook_animation_type: editingProfile.hook_animation_type || 'fall',
         target_duration: editingProfile.target_duration,
         subtitle_size: editingProfile.subtitle_size !== undefined && editingProfile.subtitle_size !== null 
           ? editingProfile.subtitle_size 
@@ -307,6 +308,7 @@ export const Settings = () => {
     style: 'single' | 'grouped';
     has_background_music: boolean;
     background_video_type: 'gameplay' | 'satisfying';
+    hook_animation_type: 'fall' | 'float';
     target_duration: number;
     subtitle_size: number;
     stroke_size: number;

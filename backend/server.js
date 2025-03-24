@@ -645,7 +645,7 @@ async function createBackgroundVideo(requiredDurationSeconds, background_video_t
 }
 
 // Function to render hook video using Remotion Lambda
-async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, openrouterApiKey = null, openrouterModel = null) {
+async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, openrouterApiKey = null, openrouterModel = null, hook_animation_type = 'fall') {
   let isProcessComplete = false; // Add variable declaration
   // Array to track S3 assets for cleanup
   const s3Assets = [];
@@ -658,6 +658,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     console.log(`Using channel style: ${channelStyle}`);
     console.log(`Using font: ${font}`);
     console.log(`Using font URL: ${fontUrl || "None provided"}`); // Log the fontUrl for debugging
+    console.log(`Using hook animation type: ${hook_animation_type}`); // Log the hook animation type
     
     // Special handling for Roboto font - use the bundled version instead of Google Fonts
     if (font === 'Roboto') {
@@ -875,6 +876,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
       hookText,
       audioUrl: hookAudioUrl,
       audioDurationInSeconds: hookDurationInSeconds,
+      hook_animation_type, // Add hook_animation_type to inputProps
       subtitleText: scriptText,
       scriptAudioUrl: scriptAudioUrl,
       scriptAudioDurationInSeconds: scriptDurationInSeconds,
@@ -895,7 +897,8 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     console.log('Remotion input props prepared:', {
       font,
       fontUrl: fontS3Url,
-      totalDurationInFrames: totalFrames
+      totalDurationInFrames: totalFrames,
+      hook_animation_type // Add hook_animation_type to logging
     });
     
     console.log('Starting Lambda rendering...');
@@ -1324,6 +1327,7 @@ app.post('/api/generate-video', async (req, res) => {
       subtitle_size = 64,
       stroke_size = 8,
       background_video_type = 'gameplay',
+      hook_animation_type = 'fall',
       pitch_up = false
     } = req.body;
 
@@ -1331,6 +1335,7 @@ app.post('/api/generate-video', async (req, res) => {
     console.log('useUserSettings:', useUserSettings);
     console.log('Channel font:', channelFont);
     console.log('Pitch up enabled:', pitch_up);
+    console.log('Hook animation type:', hook_animation_type);
     console.log('Rendering with AWS Lambda enabled');
 
     // Validate AWS credentials
@@ -1554,7 +1559,8 @@ app.post('/api/generate-video', async (req, res) => {
         userId,
         timestamp,
         openrouterApiKey,
-        openrouterModel
+        openrouterModel,
+        hook_animation_type
       );
 
       // Remove the redundant code since it's now handled in renderHookVideo
@@ -1673,7 +1679,7 @@ app.post('/api/generate-script', async (req, res) => {
     const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
 
 ## CORE PARAMETERS - MUST FOLLOW THESE EXACT GUIDELINES
-- **Total Length:** The story MUST be MINIMUM 320 words in length and maximum 350 words.
+- **Total Length:** The story MUST be MINIMUM 340 words in length and maximum 360 words.
 - **Hook:** Maximum 10 words, phrased as a question
 - **Format:** Plain text only
 - **Dialogue** Less than 5 lines of dialogue total that are brief sentences.
@@ -1708,6 +1714,7 @@ app.post('/api/generate-script', async (req, res) => {
 - Use dry humor and sarcasm to make the story more engaging
 - No extended reflection or aftermath after the payoff
 - The first sentence of the SETUP step must be designed to draw interest from the reader so they are compelled to keep reading.
+- If you have to mention a location, or a company, make sure it's a real one.
 
 ---
 

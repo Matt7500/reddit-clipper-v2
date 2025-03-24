@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Series, Audio, useVideoConfig } from 'remotion';
 import { HookVideo } from './hooks/HookVideo';
+import { FloatingHookVideo } from './hooks/FloatingHookVideo';
 import { SubtitleComposition } from './subtitles/SubtitleComposition';
 import { BackgroundVideo } from './BackgroundVideo';
 import backgroundMusic from '../assets/music/music.mp3';
@@ -25,6 +26,7 @@ interface Props {
   hookText?: string;
   audioUrl?: string;
   audioDurationInSeconds?: number;
+  hook_animation_type?: 'fall' | 'float';
   
   // Subtitle props
   subtitleText: string;
@@ -64,6 +66,7 @@ export const MainComposition: React.FC<Props> = ({
   hookText = "Default Hook",
   audioUrl = "",
   audioDurationInSeconds = 3,
+  hook_animation_type = 'fall',
   
   // Subtitle props
   subtitleText,
@@ -101,6 +104,9 @@ export const MainComposition: React.FC<Props> = ({
     console.warn(`Duration mismatch: expected ${totalDurationInFrames} frames but calculated ${calculatedTotalFrames} frames`);
   }
 
+  // Choose the correct Hook Video component based on animation type
+  const HookVideoComponent = hook_animation_type === 'float' ? FloatingHookVideo : HookVideo;
+
   return (
     <AbsoluteFill style={{ backgroundColor: '#000000' }}>
       {/* Background video layer */}
@@ -122,7 +128,7 @@ export const MainComposition: React.FC<Props> = ({
       {/* Content layers */}
       <Series>
         <Series.Sequence durationInFrames={hookDurationInFrames}>
-          <HookVideo
+          <HookVideoComponent
             channelName={channelName}
             channelImage={channelImage}
             hookText={hookText}

@@ -493,6 +493,7 @@ export function useVideoGeneration() {
         stroke_size: channel.stroke_size || 8,
         has_background_music: channel.has_background_music || false,
         background_video_type: channel.background_video_type || 'gameplay',
+        hook_animation_type: channel.hook_animation_type || 'fall',
         pitch_up: channel.pitch_up || false
       }),
     });

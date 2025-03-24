@@ -6,8 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, User, Palette, Music } from "lucide-react";
 import { useState, useEffect } from "react";
-import type { Font, StyleOption, Voice, BackgroundVideoType } from "./types";
-import { defaultFonts, styles, backgroundVideoTypes } from "./types";
+import type { Font, StyleOption, Voice, BackgroundVideoType, HookAnimationType } from "./types";
+import { defaultFonts, styles, backgroundVideoTypes, hookAnimationTypes } from "./types";
 import type { ChannelProfile } from "@/types/channel";
 
 interface EditProfileDialogProps {
@@ -75,7 +75,7 @@ export const EditProfileDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-[#222222] text-white border border-white/10 flex flex-col h-[600px]">
+      <DialogContent className="sm:max-w-[425px] bg-[#222222] text-white border border-white/10 flex flex-col min-h-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Channel Profile</DialogTitle>
         </DialogHeader>
@@ -348,6 +348,30 @@ export const EditProfileDialog = ({
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-muted-foreground">Hook Animation</label>
+                  <Select 
+                    value={editingProfile.hook_animation_type || 'fall'} 
+                    onValueChange={(value: HookAnimationType) => {
+                      onEditingProfileChange({ ...editingProfile, hook_animation_type: value });
+                    }}
+                  >
+                    <SelectTrigger className="bg-[#2A2A2A] border-[#3A3A3A]">
+                      <SelectValue placeholder="Select animation type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#222222] border border-[#3A3A3A]">
+                      {hookAnimationTypes.map((type) => (
+                        <SelectItem 
+                          key={type.value} 
+                          value={type.value}
+                          className="text-white hover:bg-[#2A2A2A] focus:bg-[#2A2A2A] cursor-pointer"
+                        >
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </TabsContent>

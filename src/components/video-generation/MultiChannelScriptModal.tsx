@@ -44,6 +44,38 @@ interface MultiChannelScriptModalProps {
   isGenerating: boolean;
 }
 
+// Function to clean markdown from text
+const cleanMarkdown = (text: string): string => {
+  if (!text) return "";
+  
+  return text
+    // Remove headings (# Header)
+    .replace(/^#+\s+/gm, '')
+    // Remove bold (**bold**)
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    // Remove italic (*italic*)
+    .replace(/\*(.*?)\*/g, '$1')
+    // Remove links ([text](url))
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    // Remove code blocks (```code```)
+    .replace(/```[\s\S]*?```/g, '')
+    // Remove inline code (`code`)
+    .replace(/`(.*?)`/g, '$1')
+    // Remove blockquotes (> quote)
+    .replace(/^\s*>\s+/gm, '')
+    // Remove ordered/unordered lists (- item or 1. item)
+    .replace(/^\s*[\-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    // Remove horizontal rules (---)
+    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+    // Remove HTML tags
+    .replace(/<[^>]*>/g, '')
+    // Replace multiple newlines with a single one
+    .replace(/\n{3,}/g, '\n\n')
+    // Trim extra whitespace
+    .trim();
+};
+
 export function MultiChannelScriptModal({
   isOpen,
   onOpenChange,
@@ -198,8 +230,15 @@ export function MultiChannelScriptModal({
       return;
     }
     
-    // All validation passed, generate videos
-    onGenerate(completeChannels);
+    // Clean markdown from all texts before generating
+    const cleanedChannelScripts = completeChannels.map(cs => ({
+      ...cs,
+      hook: cleanMarkdown(cs.hook),
+      script: cleanMarkdown(cs.script)
+    }));
+    
+    // All validation passed, generate videos with cleaned text
+    onGenerate(cleanedChannelScripts);
   };
 
   // Handle generating just the hook
