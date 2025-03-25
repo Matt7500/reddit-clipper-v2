@@ -507,7 +507,9 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             8. Return ONLY a JSON array with each word and its color, DO NOT RETURN ANYTHING ELSE
             9. DO NOT write your response in markdown, just return the JSON array.
             10. The JSON array should be in the format: [{"word": "word", "color": "color"}, {"word": "word", "color": "color"}]
-            11. Each word should be a separate entry in the array, even if part of a colored phrase`
+            11. Each word should be a separate entry in the array, even if part of a colored phrase
+            
+            You must follow the rules above, and return ONLY the JSON array. DO NOT write in markdown, just return the JSON array.`
         : `You are a text analyzer that identifies important words in text and assigns them colors.
             Rules:
             1. The vast majority of words should remain white (default)
@@ -548,7 +550,7 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
                     content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
                   }
                 ],
-                temperature: 0.3
+                temperature: 0.7
               })
             });
           } else if (hasOpenRouter) {

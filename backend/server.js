@@ -15,8 +15,14 @@ import {
   getFunctions,
   deployFunction,
   getOrCreateBucket,
-  getSites
+  getSites,
+  downloadMedia,
+  deleteRender
 } from '@remotion/lambda';
+// Add direct imports for Lambda client functions we need
+import {
+  getRenderProgress
+} from '@remotion/lambda/client';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ElevenLabsClient } from "elevenlabs";
@@ -968,9 +974,6 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     // Wait for rendering to complete by polling the status
     console.log('Waiting for Lambda rendering to complete by polling status...');
     
-    // Import the getRenderProgress function (correct name from docs)
-    const { getRenderProgress } = await import('@remotion/lambda/client');
-    
     // Poll the status every 5 seconds
     const POLL_INTERVAL = 5000; 
     
@@ -988,57 +991,92 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
           throw new Error('Rendering timed out after 10 minutes');
         }
         
-        // Get the current render progress using the correct function
-        const progress = await getRenderProgress({
-          renderId: renderResponse.renderId,
-          functionName: remotionFunction.functionName,
-          region: AWS_REGION,
-          bucketName: remotionBucketName,
-        });
-        
-        // Progress is returned as a value between 0-1, convert to percentage for logging
-        const progressPercent = Math.floor(progress.overallProgress * 100);
-        console.log(`Render progress: ${progressPercent}%, Done: ${progress.done}`);
-        
-        // Send progress updates to client
-        res.write(JSON.stringify({
-          type: 'status_update',
-          status: 'video_processing',
-          progress: progressPercent
-        }) + '\n\n');
-        
-        // Check if the rendering is complete
-        if (progress.done) {
-          renderComplete = true;
-          outputUrl = progress.outputFile;
-          console.log('Lambda render completed. Output URL:', outputUrl);
-        } else if (progress.fatalErrorEncountered) {
-          // Log the detailed progress object for debugging
-          console.error('Render failed with errors. Full progress object:', JSON.stringify(progress, null, 2));
+        // Get the current render progress using the directly imported function
+        try {
+          const progress = await getRenderProgress({
+            renderId: renderResponse.renderId,
+            functionName: remotionFunction.functionName,
+            region: AWS_REGION,
+            bucketName: remotionBucketName,
+          });
           
-          // Extract the specific error message from the errors array if possible
-          let errorMessage = 'Unknown error';
+          // Progress is returned as a value between 0-1, convert to percentage for logging
+          const progressPercent = Math.floor(progress.overallProgress * 100);
+          console.log(`Render progress: ${progressPercent}%, Done: ${progress.done}`);
           
-          if (progress.errors && Array.isArray(progress.errors) && progress.errors.length > 0) {
-            // If errors is an array of objects with a message property
-            if (typeof progress.errors[0] === 'object' && progress.errors[0].message) {
-              errorMessage = progress.errors.map(err => err.message).join(', ');
-            } else {
-              // If errors is an array of strings
-              errorMessage = progress.errors.join(', ');
+          // Send progress updates to client
+          res.write(JSON.stringify({
+            type: 'status_update',
+            status: 'video_processing',
+            progress: progressPercent
+          }) + '\n\n');
+          
+          // Check if the rendering is complete
+          if (progress.done) {
+            renderComplete = true;
+            outputUrl = progress.outputFile;
+            console.log('Lambda render completed. Output URL:', outputUrl);
+          } else if (progress.fatalErrorEncountered) {
+            // Log the detailed progress object for debugging
+            console.error('Render failed with errors. Full progress object:', JSON.stringify(progress, null, 2));
+            
+            // Extract the specific error message from the errors array if possible
+            let errorMessage = 'Unknown error';
+            
+            if (progress.errors && Array.isArray(progress.errors) && progress.errors.length > 0) {
+              // If errors is an array of objects with a message property
+              if (typeof progress.errors[0] === 'object' && progress.errors[0].message) {
+                errorMessage = progress.errors.map(err => err.message).join(', ');
+              } else {
+                // If errors is an array of strings
+                errorMessage = progress.errors.join(', ');
+              }
+            } else if (progress.errors && typeof progress.errors === 'object') {
+              // If errors is a single object
+              errorMessage = JSON.stringify(progress.errors);
+            } else if (progress.errors) {
+              // If errors is a primitive value
+              errorMessage = String(progress.errors);
             }
-          } else if (progress.errors && typeof progress.errors === 'object') {
-            // If errors is a single object
-            errorMessage = JSON.stringify(progress.errors);
-          } else if (progress.errors) {
-            // If errors is a primitive value
-            errorMessage = String(progress.errors);
+            
+            throw new Error(`Rendering failed: ${errorMessage}`);
+          } else {
+            // Wait before polling again
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
           }
-          
-          throw new Error(`Rendering failed: ${errorMessage}`);
-        } else {
-          // Wait before polling again
-          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        } catch (pollError) {
+          // Check if it's a JSON parsing error
+          if (pollError.message && pollError.message.includes('Unexpected token \'<\'')) {
+            console.error('Received HTML response instead of JSON when polling progress');
+            console.error('This is likely due to AWS service issues or authentication problems');
+            
+            // Instead of failing, try to continue polling after a longer wait
+            console.log('Waiting longer before retrying progress check...');
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL * 3));
+            
+            // Counter to limit number of retries
+            if (!this.pollErrorCount) {
+              this.pollErrorCount = 1;
+            } else {
+              this.pollErrorCount++;
+            }
+            
+            // If we've had too many errors, assume the render might be complete and try to proceed
+            if (this.pollErrorCount > 5) {
+              console.log('Too many polling errors, assuming render might be complete and attempting to proceed...');
+              renderComplete = true;
+              
+              // Try to construct a possible S3 URL for the output
+              if (renderResponse && renderResponse.renderId) {
+                const possibleS3Key = `renders/${renderResponse.renderId}/${renderResponse.outName || `${userId}-${timestamp}.mp4`}`;
+                outputUrl = `https://${remotionBucketName}.s3.${AWS_REGION}.amazonaws.com/${possibleS3Key}`;
+                console.log('Constructed possible output URL:', outputUrl);
+              }
+            }
+          } else {
+            // For other errors, rethrow
+            throw pollError;
+          }
         }
       }
       
@@ -1056,25 +1094,71 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     let videoDownloadedPath = null;
     
     try {
-      // Import the downloadMedia function from the correct package
-      const { downloadMedia } = await import('@remotion/lambda');
-      
-      const { outputPath: downloadedPath, sizeInBytes } = await downloadMedia({
-        renderId: renderResponse.renderId,
-        bucketName: remotionBucketName,
-        functionName: remotionFunction.functionName,
-        region: AWS_REGION,
-        outPath: outputPath
-      });
-      
-      console.log(`Video downloaded to: ${downloadedPath} (${sizeInBytes} bytes)`);
-      downloadSuccessful = true;
-      videoDownloadedPath = downloadedPath;
-      
-      // Remove the file from files to clean up since it was successfully downloaded
-      const fileIndex = filesToCleanup.indexOf(outputPath);
-      if (fileIndex > -1) {
-        filesToCleanup.splice(fileIndex, 1);
+      // Use the directly imported downloadMedia function
+      try {
+        const { outputPath: downloadedPath, sizeInBytes } = await downloadMedia({
+          renderId: renderResponse.renderId,
+          bucketName: remotionBucketName,
+          functionName: remotionFunction.functionName,
+          region: AWS_REGION,
+          outPath: outputPath
+        });
+        
+        console.log(`Video downloaded to: ${downloadedPath} (${sizeInBytes} bytes)`);
+        downloadSuccessful = true;
+        videoDownloadedPath = downloadedPath;
+        
+        // Remove the file from files to clean up since it was successfully downloaded
+        const fileIndex = filesToCleanup.indexOf(outputPath);
+        if (fileIndex > -1) {
+          filesToCleanup.splice(fileIndex, 1);
+        }
+      } catch (dlError) {
+        // Check if this is a JSON parsing error from an HTML response
+        if (dlError.message && dlError.message.includes('Unexpected token \'<\'')) {
+          console.error('Received HTML response instead of JSON from Lambda API');
+          console.error('This is likely due to AWS service issues or authentication problems');
+          
+          // Try to get the video directly from S3 if we have the renderId
+          if (renderResponse && renderResponse.renderId) {
+            console.log('Attempting to download video directly from S3...');
+            
+            try {
+              // Construct the expected S3 key based on renderId
+              const s3VideoKey = `renders/${renderResponse.renderId}/${renderResponse.outName || `${userId}-${timestamp}.mp4`}`;
+              
+              // Create a temporary file to download to
+              const getCommand = new GetObjectCommand({
+                Bucket: remotionBucketName,
+                Key: s3VideoKey
+              });
+              
+              // Get a signed URL for the video
+              const signedUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 });
+              
+              // Download the file using fetch
+              const response = await fetch(signedUrl);
+              
+              if (response.ok) {
+                const buffer = await response.arrayBuffer();
+                fs.writeFileSync(outputPath, Buffer.from(buffer));
+                
+                console.log(`Video downloaded directly from S3 to: ${outputPath}`);
+                downloadSuccessful = true;
+                videoDownloadedPath = outputPath;
+              } else {
+                throw new Error(`Failed to download from S3: ${response.statusText}`);
+              }
+            } catch (s3Error) {
+              console.error('Error downloading directly from S3:', s3Error);
+              throw new Error(`Failed to download video from Lambda or S3: ${dlError.message}`);
+            }
+          } else {
+            throw new Error(`Failed to download video due to AWS service issue: ${dlError.message}`);
+          }
+        } else {
+          throw dlError; // Re-throw if it's not the HTML response error
+        }
       }
     } catch (downloadError) {
       console.error('Error downloading video using downloadMedia:', downloadError);
@@ -1191,16 +1275,13 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     if (renderResponse && renderResponse.renderId) {
       try {
         console.log(`Attempting to cancel Lambda render with ID: ${renderResponse.renderId}`);
-        // Import the cancelRendering function from the correct location
-        const { cancelRendering } = await import('@remotion/lambda');
-        await cancelRendering({
+        // Use deleteRender to clean up the render
+        await deleteRender({
           renderId: renderResponse.renderId,
-          functionName: remotionFunction.functionName,
+          bucketName: remotionBucketName,
           region: AWS_REGION,
-          accessKeyId: AWS_ACCESS_KEY_ID,
-          secretAccessKey: AWS_SECRET_ACCESS_KEY,
         });
-        console.log('Lambda render cancelled successfully');
+        console.log('Lambda render deleted successfully');
       } catch (cancelError) {
         console.error('Error cancelling Lambda render:', cancelError);
       }

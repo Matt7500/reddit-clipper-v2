@@ -164,8 +164,14 @@ export const FloatingHookVideo: React.FC<Props> = ({
       )
     : 0;
 
-  // No rotation in this version
-  const rotation = 0;
+  // Dynamic rotation that oscillates with vertical movement
+  const rotationAmplitude = 2; // Maximum degrees to rotate
+  const rotation = frame >= initialGrowthFrames && frame < startShrinkingFrame
+    ? rotationAmplitude * Math.sin(
+        (frame - initialGrowthFrames) * 
+        ((2 * Math.PI * floatCyclesPerSecond) / fps)
+      )
+    : 0;
 
   // Dynamic blur only at the end when shrinking
   const blurAmount = frame >= startShrinkingFrame 
