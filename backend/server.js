@@ -2071,6 +2071,13 @@ When given a hook or topic, I will generate a complete story following these exa
           max_tokens: 40
         });
 
+        // Add defensive check for API response structure
+        if (!hookCompletion || !hookCompletion.choices || !hookCompletion.choices[0] || 
+            !hookCompletion.choices[0].message || !hookCompletion.choices[0].message.content) {
+          console.error('Invalid API response structure:', JSON.stringify(hookCompletion));
+          throw new Error('Failed to generate hook: Invalid API response structure');
+        }
+
         const generatedHook = hookCompletion.choices[0].message.content
           .replace(/["']/g, '') // Remove quotes
           .replace(/^\s*[Hh]ook:\s*/, '') // Remove any "Hook:" prefix
@@ -2109,6 +2116,13 @@ When given a hook or topic, I will generate a complete story following these exa
           ],
           temperature: 0.7
         });
+
+        // Add defensive check for API response structure
+        if (!storyCompletion || !storyCompletion.choices || !storyCompletion.choices[0] || 
+            !storyCompletion.choices[0].message || !storyCompletion.choices[0].message.content) {
+          console.error('Invalid API response structure:', JSON.stringify(storyCompletion));
+          throw new Error('Failed to generate script: Invalid API response structure');
+        }
 
         const claudeResponse = storyCompletion.choices[0].message.content;
 
