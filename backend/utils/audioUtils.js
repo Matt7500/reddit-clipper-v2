@@ -101,7 +101,7 @@ export async function cleanupFiles(files) {
  * Processes audio: removes silences and speeds up
  * @param {string} inputPath - Path to input audio file
  * @param {string} outputPath - Path to output audio file
- * @param {number} speedFactor - Speed factor (default: 1.2)
+ * @param {number} speedFactor - Speed factor (default: 1.3)
  * @param {boolean} pitchUp - Whether to pitch up the audio
  * @param {boolean} isHook - Whether the audio is a hook
  * @param {number|null} targetDuration - Target duration in seconds
@@ -152,89 +152,76 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
           const durationAfterSilence = parseFloat(silenceDurationStdout);
           
-          // Calculate pitch and speed factors based on requirements
-          let pitchFactor;
-          let tempoFactor = 1.0; // Separate tempo from pitch
+          // PREMIERE PRO STYLE: Speed and pitch change together
+          // In Premiere Pro, when you increase speed to 130%, the pitch also increases by 30%
           
           if (isHook) {
-              // Hook audio: use fixed factor for pitch 
-              pitchFactor = 1.2;
-              // No separate tempo adjustment needed for hook
+              // For hooks: fixed 1.3x speed and pitch increase
+              speedFactor = 1.3;
+              console.log(`Using true Premiere Pro style 1.3x speed+pitch increase for hook`);
+              
+              // Use asetrate to change both speed and pitch together, exactly like Premiere Pro
+              // When asetrate increases the sample rate by 30%, both tempo and pitch increase by 30%
+              const newSampleRate = Math.round(baseRate * 1.3);
+              
+              console.log(`Processing hook with TRUE Premiere Pro style 1.3x speed+pitch increase`);
+              console.log(`Changing sample rate from ${baseRate} to ${newSampleRate} Hz to affect both speed and pitch`);
+              
+              // Apply the sample rate change first (affects both pitch and tempo)
+              const sampleRateChangedTemp = outputPath + '.rate-changed.wav';
+              await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "asetrate=${newSampleRate}" -y "${sampleRateChangedTemp}"`);
+              
+              // Convert back to original sample rate without affecting the pitch/speed change
+              await execAsync(`ffmpeg -i "${sampleRateChangedTemp}" -ar ${baseRate} -y "${outputPath}"`);
+              
+              // Clean up temporary files
+              await cleanupFiles([silenceRemovedTemp, sampleRateChangedTemp]);
+              
+              // Verify final duration for hook
+              const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
+              const finalDuration = parseFloat(finalDurationStdout);
+              console.log('Final hook audio duration:', {
+                  originalDuration: durationAfterSilence,
+                  actualDuration: finalDuration,
+                  speedRatio: durationAfterSilence / finalDuration
+              });
+              
+              return;
+          } else if (targetDuration && targetDuration > 0) {
+              // Calculate speed factor to reach target duration
+              speedFactor = durationAfterSilence / targetDuration;
+              
+              // Limit speed factor to reasonable range for intelligibility
+              speedFactor = Math.max(0.8, Math.min(2.0, speedFactor));
+              
+              console.log(`Using Premiere Pro style speed+pitch increase: ${speedFactor.toFixed(2)}x`);
+          } else if (!isHook) {
+              // For scripts without target duration, don't apply any speed/pitch change
+              // This prevents double-processing when scripts are processed in two passes
+              speedFactor = 1.0;
+              console.log(`Using neutral 1.0x speed/pitch for script (no change)`);
           } else {
-              // Script audio: calculate speed needed to match target duration
-              if (targetDuration === 1) {
-                  // When targetDuration is 1, treat it as if no target duration was specified
-                  // Use default speed factor for pitch
-                  pitchFactor = speedFactor;
-                  tempoFactor = 1.0;
-                  console.log('Target duration is 1, treating as no target duration');
-              } else if (targetDuration) {
-                  // Calculate total speed factor needed to reach target duration
-                  const totalSpeedFactor = durationAfterSilence / targetDuration;
-                  
-                  // When pitchUp is true, we want both the pitch and tempo to contribute to speed
-                  // Use the total speed factor as the pitch factor to get the chipmunk effect
-                  if (targetDuration <= 0) {
-                    pitchFactor = 1.2;
-                  } else {
-                    pitchFactor = totalSpeedFactor;
-                  }
-                  
-                  // No additional tempo adjustment needed, since the pitch change will handle speed
-                  tempoFactor = 1.0;
-                  
-                  // Ensure pitch factor is within reasonable limits
-                  pitchFactor = Math.max(1.0, Math.min(2.0, pitchFactor));
-                  
-                  console.log(`Script audio adjustments:`, {
-                      originalDuration: currentDuration,
-                      durationAfterSilence: durationAfterSilence,
-                      targetDuration: targetDuration,
-                      pitchFactor: pitchFactor,
-                      tempoFactor: tempoFactor,
-                      expectedFinalDuration: durationAfterSilence / pitchFactor
-                  });
-              } else {
-                  // No target duration specified, use default speed factor
-                  pitchFactor = speedFactor;
-                  tempoFactor = 1.0;
-              }
-          }
-
-          // Calculate the exact sample rate needed for pitch adjustment (like in the Python example)
-          const newRate = Math.floor(baseRate * pitchFactor);
-          
-          console.log('Audio processing parameters:', {
-              originalSampleRate: baseRate,
-              newSampleRate: newRate,
-              pitchFactor: pitchFactor,
-              tempoFactor: tempoFactor,
-              effectiveSpeedFactor: isHook ? pitchFactor : pitchFactor * tempoFactor,
-              expectedDuration: isHook ? durationAfterSilence / pitchFactor : durationAfterSilence / (pitchFactor * tempoFactor),
-              isHook: isHook
-          });
-          
-          // Build the filter chain exactly as in the Python example
-          let filterChain = [
-              // First change the sample rate to affect pitch
-              `asetrate=${newRate}`,
-              // Then resample back to original rate while preserving the pitch change
-              `aresample=${baseRate}`
-          ];
-          
-          // Add tempo adjustment if needed
-          if (tempoFactor !== 1.0) {
-              filterChain.push(`atempo=${tempoFactor.toFixed(4)}`);
+              // Default for other cases
+              speedFactor = 1.3;
+              console.log(`Using default 1.3x speed+pitch increase`);
           }
           
-          // Join the filter chain with commas (like in the Python example)
-          const filterString = filterChain.join(',');
+          // Use asetrate to change both speed and pitch together, exactly like Premiere Pro
+          // When asetrate increases the sample rate by 30%, both tempo and pitch increase by 30%
+          const newSampleRate = Math.round(baseRate * speedFactor);
           
-          // Apply the filter chain            
-          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -filter:a "${filterString}" -ar ${baseRate} -y "${outputPath}"`);
+          console.log(`Processing audio with TRUE Premiere Pro style ${speedFactor.toFixed(2)}x speed+pitch increase`);
+          console.log(`Changing sample rate from ${baseRate} to ${newSampleRate} Hz`);
+          
+          // Apply the sample rate change first (affects both pitch and tempo)
+          const sampleRateChangedTemp = outputPath + '.rate-changed.wav';
+          await execAsync(`ffmpeg -i "${silenceRemovedTemp}" -af "asetrate=${newSampleRate}" -y "${sampleRateChangedTemp}"`);
+          
+          // Convert back to original sample rate without affecting the pitch/speed change
+          await execAsync(`ffmpeg -i "${sampleRateChangedTemp}" -ar ${baseRate} -y "${outputPath}"`);
           
           // Clean up temporary files
-          await cleanupFiles([silenceRemovedTemp]);
+          await cleanupFiles([silenceRemovedTemp, sampleRateChangedTemp]);
           
           // Verify final duration
           const { stdout: finalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputPath}"`);
@@ -539,7 +526,7 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
                 'Authorization': `Bearer ${openrouterApiKey}`
               },
               body: JSON.stringify({
-                model: 'anthropic/claude-3.7-sonnet:beta',
+                model: 'anthropic/claude-3.7-sonnet',
                 messages: [
                   {
                     role: "system",

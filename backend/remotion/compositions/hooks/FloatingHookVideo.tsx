@@ -165,7 +165,7 @@ export const FloatingHookVideo: React.FC<Props> = ({
     : 0;
 
   // Dynamic rotation that oscillates with vertical movement
-  const rotationAmplitude = 2; // Maximum degrees to rotate
+  const rotationAmplitude = 0.75; // Maximum degrees to rotate
   const rotation = frame >= initialGrowthFrames && frame < startShrinkingFrame
     ? rotationAmplitude * Math.sin(
         (frame - initialGrowthFrames) * 
