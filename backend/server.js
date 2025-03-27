@@ -104,6 +104,7 @@ const s3Client = new S3Client({
 // Lambda configuration
 const LAMBDA_MEMORY_SIZE = 4096; // 4GB RAM
 const LAMBDA_TIMEOUT = 300; // 5 minutes
+const LAMBDA_DISK_SIZE = 10240; // 10GB disk space
 
 // Store the bucket name returned by getOrCreateBucket
 let remotionBucketName = null;
@@ -203,7 +204,8 @@ const initializeLambda = async () => {
     console.log('Initializing Lambda with params:', {
       region: AWS_REGION,
       timeout: LAMBDA_TIMEOUT,
-      memory: LAMBDA_MEMORY_SIZE
+      memory: LAMBDA_MEMORY_SIZE,
+      disk: LAMBDA_DISK_SIZE
     });
     
     // Make sure bucket exists and get the Remotion-managed bucket name
@@ -246,6 +248,7 @@ const initializeLambda = async () => {
         secretAccessKey: AWS_SECRET_ACCESS_KEY,
         timeoutInSeconds: LAMBDA_TIMEOUT,
         memorySizeInMb: LAMBDA_MEMORY_SIZE,
+        diskSizeInMb: LAMBDA_DISK_SIZE,
       });
       console.log('Remotion Lambda function deployed:', JSON.stringify(remotionFunction, null, 2));
     } else {
@@ -1208,6 +1211,22 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
 
     // Clean up the output video and thumbnail files since they're now in Supabase
     await cleanupFiles([videoDownloadedPath, thumbnailPath]);
+
+    // Delete the render from Lambda/S3 now that we've downloaded and stored it in Supabase
+    if (renderResponse && renderResponse.renderId) {
+      try {
+        console.log(`Deleting Lambda render with ID: ${renderResponse.renderId}`);
+        const { freedBytes } = await deleteRender({
+          renderId: renderResponse.renderId,
+          bucketName: remotionBucketName,
+          region: AWS_REGION,
+        });
+        console.log(`Lambda render deleted successfully. Freed ${freedBytes} bytes of storage.`);
+      } catch (deleteError) {
+        console.error('Error deleting Lambda render:', deleteError);
+        // Continue execution even if deletion fails
+      }
+    }
 
     // Save video metadata to database
     console.log('Saving video metadata to database...');
