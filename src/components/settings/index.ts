@@ -5,4 +5,5 @@ export * from "./DeleteProfileDialog";
 export * from "./EditProfileDialog";
 export * from "./FontSettings";
 export * from "./GitHubUpdate";
+export * from "./PromptSettings";
 export * from "./types"; 

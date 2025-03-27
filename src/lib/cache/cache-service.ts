@@ -77,6 +77,8 @@ class CacheService {
             openai_api_key: (settings as any).openaiApiKey,
             openrouter_api_key: (settings as any).openrouterApiKey,
             openrouter_model: (settings as any).openrouterModel,
+            hook_system_prompt: (settings as any).hookSystemPrompt,
+            script_system_prompt: (settings as any).scriptSystemPrompt,
             updated_at: new Date().toISOString(),
           }, {
             onConflict: 'user_id'

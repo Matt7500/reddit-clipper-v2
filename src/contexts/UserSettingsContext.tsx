@@ -9,6 +9,8 @@ interface UserSettings {
   openaiApiKey?: string;
   openrouterApiKey?: string;
   openrouterModel?: string;
+  hookSystemPrompt?: string;
+  scriptSystemPrompt?: string;
   [key: string]: any; // Allow for additional settings
 }
 

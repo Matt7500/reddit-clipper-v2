@@ -1301,7 +1301,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
 // API endpoint to save user settings
 app.post('/api/save-user-settings', async (req, res) => {
   try {
-    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, openrouterApiKey, openrouterModel, otherSettings } = req.body;
+    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, openrouterApiKey, openrouterModel, hookSystemPrompt, scriptSystemPrompt, otherSettings } = req.body;
     
     if (!userId) {
       return res.status(400).json({ 
@@ -1328,6 +1328,8 @@ app.post('/api/save-user-settings', async (req, res) => {
       openaiApiKey,
       openrouterApiKey,
       openrouterModel,
+      hookSystemPrompt,
+      scriptSystemPrompt,
       ...otherSettings,
       lastUpdated: new Date().toISOString()
     });
@@ -1738,12 +1740,13 @@ app.post('/api/login', async (req, res) => {
 // Add endpoint for generating scripts
 app.post('/api/generate-script', async (req, res) => {
   try {
-    const { openrouterApiKey, openrouterModel, customHook, hookOnly } = req.body;
+    const { openrouterApiKey, openrouterModel, customHook, hookOnly, userId } = req.body;
 
     console.log('Received request with OpenRouter API key:', openrouterApiKey);
     console.log('Received request with OpenRouter model:', openrouterModel);
     console.log('Received request with custom hook:', customHook);
     console.log('Hook only mode:', hookOnly);
+    console.log('User ID:', userId);
 
     // Validate OpenRouter API key
     if (!openrouterApiKey) {
@@ -1756,8 +1759,15 @@ app.post('/api/generate-script', async (req, res) => {
     // Get OpenRouter client with the provided API key
     const openrouterClient = getOpenRouterClient(openrouterApiKey);
     
-    // System prompt for story generation
-    const openrouterSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
+    // Get user settings if userId is provided
+    let userSettings = null;
+    if (userId) {
+      userSettings = userSettingsCache.get(userId);
+      console.log('Using custom prompts for user:', userId);
+    }
+    
+    // Default system prompt for story generation - this remains unchanged
+    const defaultScriptSystemPrompt = `## Story Generation System Prompt for Comedic Justice Tales
 
 ## CORE PARAMETERS - MUST FOLLOW THESE EXACT GUIDELINES
 - **Total Length:** The story MUST be MINIMUM 300 words in length and maximum 330 words.
@@ -1917,6 +1927,103 @@ Story:
 
 When given a hook or topic, I will generate a complete story following these exact guidelines, maintaining the specified tone, structure, and satisfying payoff ending.`;
 
+    // Default hook system prompt
+    const defaultHookSystemPrompt = `### System Instructions for Viral Reddit Questions  
+
+You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **funny, awkward, or bizarre** personal stories about morally and/or politically incorrect, controversial, and offensive topics.  
+
+### 🎯 **Your Goal:**  
+Generate **viral, comment-bait questions** similar to r/AskReddit threads that make people **instantly want to share their experience.**  
+
+---
+
+### ⚠️ **IMPORTANT: AVOID REPETITIVE STRUCTURES**
+If you've been asked to generate multiple questions, DO NOT create variations of the same question or structure.
+For example, if you've created "Moms, what's the most...", DO NOT create another "Moms, what's the..." question.
+Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspectives.
+
+---
+
+### 🔥 **The Vibe & Themes:**  
+- Awkward social interactions  
+- Dumb mistakes & misunderstandings  
+- Embarrassing moments & cringe stories  
+- Unexpected twists & weird encounters  
+- Hilarious childhood beliefs  
+- Workplace & school drama  
+- Family chaos & relationship mishaps  
+- Strange coincidences  
+- Parent-child dynamics and stories
+- Sibling and extended family interactions
+
+---
+
+### ✅ **Rules for Question Generation:**  
+✔ **Keep it varied** – NEVER use the same structure twice
+✔ **Relatable & natural phrasing** – Must feel like a real Reddit question  
+✔ **Maximum length: 80 characters**  
+✔ **No asterisks, markdown, or special formatting**  
+✔ **Make people think, "I HAVE a story for this!"**  
+✔ **FREQUENTLY include different family perspectives** (dads, moms, sons, daughters, siblings, etc.)
+
+---
+
+### 🎯 **Proven Question Formats (MUST ROTATE AND VARY - NEVER USE SAME FORMAT TWICE):**  
+- **"What's the most..."** → Easy, classic setup  
+- **"Parents, what's the funniest..."** → Authority figure POV  
+- **"Dads, what's the weirdest..."** → Father-specific perspective  
+- **"Moms, when did you..."** → Mother-specific perspective  
+- **"Sons/Daughters, how did you..."** → Child perspective  
+- **"Have you ever..."** → Direct experience prompt  
+- **"When did you realize..."** → Moment of recognition  
+- **"How did you react when..."** → Forces a vivid memory  
+- **"What's something that..."** → Open-ended curiosity  
+- **"Tell me about a time..."** → Instant storytelling setup  
+- **"What happened when..."** → Encourages an unexpected twist  
+
+---
+
+### 🎯 **Example Questions (Use these & create new variations - DO NOT REPEAT PATTERNS):**  
+1. Parents, what's the funniest lie your kid ever confidently told you?  
+2. What's the dumbest thing you got in trouble for at school?  
+3. Have you ever witnessed an argument so stupid it left you speechless?  
+4. What's the most embarrassing way you've been caught lying?  
+5. What's the weirdest thing you've ever overheard from a stranger?  
+6. When did you realize you were the villain in someone else's story?  
+7. What's the most awkward way you've offended someone without meaning to?  
+8. Tell me about a time you accidentally made a situation WAY worse.  
+9. What's the wildest excuse someone gave for missing work or school?  
+10. How did you turn a small mistake into a full-blown disaster?
+11. Dads, what's the most ridiculous thing you've done to make your kids laugh?
+12. Moms, when did your child completely embarrass you in public?
+13. Sons, what's something your dad taught you that you'll never forget?
+14. Daughters, what's the most awkward conversation you've had with your mom?
+15. Siblings, what's the craziest revenge you've taken on your brother or sister?
+
+---
+
+### ✅ **Guidelines for Creating Unique New Questions:**  
+1. **Use DIFFERENT sentence structures** – Don't just copy one format.  
+2. **Explore DIFFERENT SETTINGS** – Work, school, home, public places.  
+3. **Vary RELATIONSHIPS** – Friends, family, coworkers, strangers, bosses.  
+4. **Use DIFFERENT QUESTION TYPES** – "What," "When," "How," "Have you ever."  
+5. **Trigger a strong reaction** – The best questions make people **react emotionally from their own experiences or political beliefs**
+6. **Include family perspectives** – Make at least 40% of questions target specific family roles (dads, moms, sons, daughters, siblings).
+7. **TRUE DIVERSITY** – If asked for multiple questions, each one must be COMPLETELY DIFFERENT from the last in both topic and structure.
+
+---
+
+### **Output Format:**  
+A **single, engaging question** that makes people want to share their story.
+
+## DO NOT EXCEED 12 WORDS IN THE HOOK YOU CREATE`;
+
+    // Use custom script prompt if available, otherwise use default
+    const openrouterSystemPrompt = userSettings?.scriptSystemPrompt || defaultScriptSystemPrompt;
+    
+    // Use custom hook prompt if available, otherwise use default
+    const hookSystemPrompt = userSettings?.hookSystemPrompt || defaultHookSystemPrompt;
+
     // Clean markdown from text while preserving newlines
     const cleanText = (text) => {
       return text
@@ -1966,101 +2073,13 @@ When given a hook or topic, I will generate a complete story following these exa
         const selectedTopic = selectWeightedTopic(topics);
         console.log(`Selected topic for hook generation: ${selectedTopic}`);
 
-        // Generate hook using OpenRouter
+        // Generate hook using OpenRouter with custom/default prompt
         const hookCompletion = await openrouterClient.chat.completions.create({
           model: openrouterModel,
           messages: [
             {
               role: "system",
-              content: `### System Instructions for Viral Reddit Questions  
-
-              You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **funny, awkward, or bizarre** personal stories about morally and/or politically incorrect, controversial, and offensive topics.  
-              
-              ### 🎯 **Your Goal:**  
-              Generate **viral, comment-bait questions** similar to r/AskReddit threads that make people **instantly want to share their experience.**  
-              
-              ---
-              
-              ### ⚠️ **IMPORTANT: AVOID REPETITIVE STRUCTURES**
-              If you've been asked to generate multiple questions, DO NOT create variations of the same question or structure.
-              For example, if you've created "Moms, what's the most...", DO NOT create another "Moms, what's the..." question.
-              Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspectives.
-              
-              ---
-              
-              ### 🔥 **The Vibe & Themes:**  
-              - Awkward social interactions  
-              - Dumb mistakes & misunderstandings  
-              - Embarrassing moments & cringe stories  
-              - Unexpected twists & weird encounters  
-              - Hilarious childhood beliefs  
-              - Workplace & school drama  
-              - Family chaos & relationship mishaps  
-              - Strange coincidences  
-              - Parent-child dynamics and stories
-              - Sibling and extended family interactions
-              
-              ---
-              
-              ### ✅ **Rules for Question Generation:**  
-              ✔ **Keep it varied** – NEVER use the same structure twice
-              ✔ **Relatable & natural phrasing** – Must feel like a real Reddit question  
-              ✔ **Maximum length: 80 characters**  
-              ✔ **No asterisks, markdown, or special formatting**  
-              ✔ **Make people think, "I HAVE a story for this!"**  
-              ✔ **FREQUENTLY include different family perspectives** (dads, moms, sons, daughters, siblings, etc.)
-              
-              ---
-              
-              ### 🎯 **Proven Question Formats (MUST ROTATE AND VARY - NEVER USE SAME FORMAT TWICE):**  
-              - **"What's the most..."** → Easy, classic setup  
-              - **"Parents, what's the funniest..."** → Authority figure POV  
-              - **"Dads, what's the weirdest..."** → Father-specific perspective  
-              - **"Moms, when did you..."** → Mother-specific perspective  
-              - **"Sons/Daughters, how did you..."** → Child perspective  
-              - **"Have you ever..."** → Direct experience prompt  
-              - **"When did you realize..."** → Moment of recognition  
-              - **"How did you react when..."** → Forces a vivid memory  
-              - **"What's something that..."** → Open-ended curiosity  
-              - **"Tell me about a time..."** → Instant storytelling setup  
-              - **"What happened when..."** → Encourages an unexpected twist  
-              
-              ---
-              
-              ### 🎯 **Example Questions (Use these & create new variations - DO NOT REPEAT PATTERNS):**  
-              1. Parents, what's the funniest lie your kid ever confidently told you?  
-              2. What's the dumbest thing you got in trouble for at school?  
-              3. Have you ever witnessed an argument so stupid it left you speechless?  
-              4. What's the most embarrassing way you've been caught lying?  
-              5. What's the weirdest thing you've ever overheard from a stranger?  
-              6. When did you realize you were the villain in someone else's story?  
-              7. What's the most awkward way you've offended someone without meaning to?  
-              8. Tell me about a time you accidentally made a situation WAY worse.  
-              9. What's the wildest excuse someone gave for missing work or school?  
-              10. How did you turn a small mistake into a full-blown disaster?
-              11. Dads, what's the most ridiculous thing you've done to make your kids laugh?
-              12. Moms, when did your child completely embarrass you in public?
-              13. Sons, what's something your dad taught you that you'll never forget?
-              14. Daughters, what's the most awkward conversation you've had with your mom?
-              15. Siblings, what's the craziest revenge you've taken on your brother or sister?
-              
-              ---
-              
-              ### ✅ **Guidelines for Creating Unique New Questions:**  
-              1. **Use DIFFERENT sentence structures** – Don't just copy one format.  
-              2. **Explore DIFFERENT SETTINGS** – Work, school, home, public places.  
-              3. **Vary RELATIONSHIPS** – Friends, family, coworkers, strangers, bosses.  
-              4. **Use DIFFERENT QUESTION TYPES** – "What," "When," "How," "Have you ever."  
-              5. **Trigger a strong reaction** – The best questions make people **react emotionally from their own experiences or political beliefs**
-              6. **Include family perspectives** – Make at least 40% of questions target specific family roles (dads, moms, sons, daughters, siblings).
-              7. **TRUE DIVERSITY** – If asked for multiple questions, each one must be COMPLETELY DIFFERENT from the last in both topic and structure.
-              
-              ---
-              
-              ### **Output Format:**  
-              A **single, engaging question** that makes people want to share their story.
-              
-              ## DO NOT EXCEED 12 WORDS IN THE HOOK YOU CREATE`
+              content: hookSystemPrompt
             },
             {
               role: "user",

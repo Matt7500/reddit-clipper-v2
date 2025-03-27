@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Define available models for the dropdown
 const OPENROUTER_MODELS = [
@@ -85,6 +86,7 @@ export function MultiChannelScriptModal({
   isGenerating
 }: MultiChannelScriptModalProps) {
   const { settings } = useUserSettings();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [channelScripts, setChannelScripts] = useState<ChannelScript[]>(() => 
     channels.map(channel => ({
@@ -277,6 +279,7 @@ export function MultiChannelScriptModal({
           openrouterApiKey: settings.openrouterApiKey,
           openrouterModel: hookModel,
           hookOnly: true, // Signal we only want the hook
+          userId: user?.id, // Pass the user ID to use custom prompts
         }),
       });
       
@@ -378,6 +381,7 @@ export function MultiChannelScriptModal({
           openrouterApiKey: settings.openrouterApiKey,
           openrouterModel: scriptModel,
           customHook: currentHook,
+          userId: user?.id, // Pass the user ID to use custom prompts
         }),
       });
       
