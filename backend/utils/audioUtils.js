@@ -473,7 +473,7 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
         return processedWords;
       }
       
-      // Analyze text for important words using OpenAI or OpenRouter API
+      // Analyze text for important words using OpenRouter API (using OpenAI SDK format)
       console.log('Analyzing text for word importance...');
       const systemPrompt = channelStyle === 'single' 
         ? `You are a text analyzer that identifies important words and phrases in text and assigns them colors. You must put a focus on coloring phrases rather than single words.
@@ -487,10 +487,10 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             7. When coloring multiple consecutive words as a phrase, each word in the phrase should get the same color
             8. Return ONLY a JSON array with each word and its color, DO NOT RETURN ANYTHING ELSE
             9. DO NOT write your response in markdown, just return the JSON array.
-            10. The JSON array should be in the format: [{"word": "word", "color": "color"}, {"word": "word", "color": "color"}]
+            10. The JSON array MUST be in the format: [{"word": "word", "color": "color"}, {"word": "word", "color": "color"}]
             11. Each word should be a separate entry in the array, even if part of a colored phrase
             
-            You must follow the rules above, and return ONLY the JSON array. DO NOT write in markdown, just return the JSON array.`
+            You must follow the rules above, and return ONLY the JSON array. DO NOT write in markdown, just return the JSON array in EXACTLY the format specified above.`
         : `You are a text analyzer that identifies important words in text and assigns them colors.
             Rules:
             1. The vast majority of words should remain white (default)
@@ -501,7 +501,7 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             6. Only color truly important words - most should stay white
             7. Return ONLY a JSON array with each word and its color, DO NOT RETURN ANYTHING ELSE
             8. DO NOT write your response in markdown, just return the JSON array.
-            9. The JSON array should be in the format: [{"word": "word", "color": "color"}, {"word": "word", "color": "color"}]`;
+            9. The JSON array MUST be in the format: [{"word": "word", "color": "color"}, {"word": "word", "color": "color"}]`;
 
       let colorAssignments = [];
       let apiSuccess = false;
@@ -511,54 +511,34 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
         try {
           console.log(`Color analysis attempt ${colorAttempt}/${MAX_RETRIES}`);
           
-          let importanceResponse;
-          if (hasOpenAI) {
-            importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openrouterApiKey}`
-              },
-              body: JSON.stringify({
-                model: 'anthropic/claude-3.7-sonnet',
-                messages: [
-                  {
-                    role: "system",
-                    content: systemPrompt
-                  },
-                  {
-                    role: "user",
-                    content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
-                  }
-                ],
-                temperature: 0.7
-              })
-            });
-          } else if (hasOpenRouter) {
-            importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openrouterApiKey}`
-              },
-              body: JSON.stringify({
-                model: openrouterModel,
-                messages: [
-                  {
-                    role: "system",
-                    content: systemPrompt
-                  },
-                  {
-                    role: "user",
-                    content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
-                  }
-                ],
-                temperature: 0.3
-              })
-            });
-          } else {
-            throw new Error('Neither OpenAI nor OpenRouter API key is available');
-          }
+          // Use OpenRouter with OpenAI SDK format - single implementation for both paths
+          const apiKey = openrouterApiKey || openaiApiKey; // Use whichever key is available
+          const modelToUse = 'anthropic/claude-3.7-sonnet';
+          
+          const importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+              'HTTP-Referer': 'https://reddit-clipper.com', // Identify your app to OpenRouter
+              'X-Title': 'Reddit Clipper' // Optional app name for OpenRouter stats
+            },
+            body: JSON.stringify({
+              model: modelToUse,
+              messages: [
+                {
+                  role: "system",
+                  content: systemPrompt
+                },
+                {
+                  role: "user",
+                  content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
+                }
+              ],
+              temperature: 0.8,
+              response_format: { type: "json_object" } // Request JSON format specifically
+            })
+          });
 
           // Log the response status
           console.log(`API response status: ${importanceResponse.status}`);
@@ -583,72 +563,107 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             const rawContent = importanceData.choices[0].message.content;
             console.log(`API raw response content (first 100 chars): ${rawContent.substring(0, 100)}...`);
             
-            // Clean up the raw content before parsing
-            let cleanedContent = rawContent.trim();
+            // NEW APPROACH: Parse JSON more robustly with targeted validation
+            // Instead of trying to parse the entire JSON at once, we'll validate and fix item by item
             
-            // If content starts with a markdown code block, remove it
+            let cleanedContent = rawContent.trim();
+            let finalColorAssignments = [];
+            
+            // Remove JSON code blocks and any extra text before/after the array
+            if (cleanedContent.includes('[') && cleanedContent.includes(']')) {
+              cleanedContent = cleanedContent.substring(
+                cleanedContent.indexOf('['),
+                cleanedContent.lastIndexOf(']') + 1
+              );
+            }
+            
+            // Remove markdown code blocks if present
             if (cleanedContent.startsWith("```json")) {
               cleanedContent = cleanedContent.replace(/^```json\s*/, "").replace(/\s*```$/, "");
             } else if (cleanedContent.startsWith("```")) {
               cleanedContent = cleanedContent.replace(/^```\s*/, "").replace(/\s*```$/, "");
             }
             
+            // Try parsing entire JSON first as a quick approach
             try {
-              // First try direct parsing
-              colorAssignments = JSON.parse(cleanedContent);
-            } catch (initialParseError) {
-              console.warn(`Initial JSON parsing failed: ${initialParseError.message}`);
-              console.warn("Attempting to fix malformed JSON...");
+              finalColorAssignments = JSON.parse(cleanedContent);
+              console.log("Successfully parsed full JSON directly");
+            } catch (fullParseError) {
+              console.warn(`Initial full JSON parsing failed: ${fullParseError.message}`);
               
-              // If direct parsing fails, try to fix common JSON issues
-              // Replace any unescaped quotes inside strings
-              cleanedContent = cleanedContent.replace(/([,{]\s*"[^"]+)\\*"/g, '$1\\"');
+              // If that fails, extract and validate each item individually
+              console.log("Extracting and validating items individually...");
               
-              // Fix missing commas between objects
-              cleanedContent = cleanedContent.replace(/}\s*{/g, "},{");
+              // Extract each object separately using regex
+              const itemRegex = /\{\s*(?:"word"|word)\s*:\s*(?:"([^"]*)"|'([^']*)')\s*,\s*(?:"color"|color)\s*:\s*(?:"([^"]*)"|'([^']*)')\s*\}/g;
+              let match;
+              let validItems = [];
               
-              // Remove any trailing commas in arrays or objects
-              cleanedContent = cleanedContent.replace(/,\s*}/g, "}").replace(/,\s*\]/g, "]");
-              
-              // Ensure the content is an array
-              if (!cleanedContent.trim().startsWith("[")) {
-                cleanedContent = "[" + cleanedContent;
-              }
-              if (!cleanedContent.trim().endsWith("]")) {
-                cleanedContent = cleanedContent + "]";
-              }
-              
-              try {
-                colorAssignments = JSON.parse(cleanedContent);
-              } catch (fallbackError) {
-                console.error("Fallback JSON parsing also failed:", fallbackError.message);
-                console.error("Falling back to manual extraction of word-color pairs");
+              while ((match = itemRegex.exec(cleanedContent)) !== null) {
+                // Extract the word and color from all possible capture groups
+                const word = match[1] || match[2] || "";
+                const color = match[3] || match[4] || "white";
                 
-                // Last resort: manually extract word-color pairs using regex
-                colorAssignments = [];
-                const wordColorRegex = /"word"\s*:\s*"([^"]*)"\s*,\s*"color"\s*:\s*"([^"]*)"/g;
-                let match;
+                // Only add valid items
+                if (word) {
+                  validItems.push({ word, color });
+                }
+              }
+              
+              if (validItems.length > 0) {
+                finalColorAssignments = validItems;
+                console.log(`Successfully extracted ${validItems.length} valid word-color pairs`);
+              } else {
+                // Last resort: Try to fix each line and then parse
+                console.log("Attempting line-by-line parsing and fixing...");
                 
-                while ((match = wordColorRegex.exec(cleanedContent)) !== null) {
-                  colorAssignments.push({
-                    word: match[1],
-                    color: match[2]
-                  });
+                const lines = cleanedContent.split("\n");
+                const itemPattern = /\s*\{\s*(?:"word"|word)\s*:\s*(?:"([^"]*)"|'([^']*)')\s*,\s*(?:"color"|color)\s*:\s*(?:"([^"]*)"|'([^']*)')\s*\}\s*/;
+                
+                for (const line of lines) {
+                  // Skip empty lines or lines that are clearly not JSON objects
+                  if (!line.trim() || (!line.includes("{") && !line.includes("}"))) {
+                    continue;
+                  }
+                  
+                  const itemMatch = line.match(itemPattern);
+                  if (itemMatch) {
+                    const word = itemMatch[1] || itemMatch[2] || "";
+                    const color = itemMatch[3] || itemMatch[4] || "white";
+                    
+                    if (word) {
+                      validItems.push({ word, color });
+                    }
+                  }
                 }
                 
-                if (colorAssignments.length === 0) {
-                  // If all else fails, create default white assignments
-                  const words = directData.text.split(' ');
-                  colorAssignments = words.map(word => ({ word, color: 'white' }));
-                  console.warn(`Created default white color assignments for ${words.length} words`);
-                } else {
-                  console.log(`Extracted ${colorAssignments.length} word-color pairs using regex`);
+                if (validItems.length > 0) {
+                  finalColorAssignments = validItems;
+                  console.log(`Extracted ${validItems.length} items through line-by-line parsing`);
                 }
+              }
+              
+              // If we still have no valid items, fallback to splitting the text directly
+              if (finalColorAssignments.length === 0) {
+                console.warn('Falling back to direct text splitting');
+                const words = directData.text.split(' ')
+                                            .filter(w => w.trim() !== '')
+                                            .map(w => w.replace(/[^a-zA-Z0-9']/g, ''));
+                finalColorAssignments = words.map(word => ({ word, color: 'white' }));
               }
             }
             
+            // Validate and clean the final assignments
+            const validColors = ['white', 'yellow', 'red', 'green', 'purple'];
+            colorAssignments = finalColorAssignments.filter(item => !!item && !!item.word).map(item => ({
+              word: (item.word || "").toString().trim(),
+              color: validColors.includes((item.color || "").toLowerCase()) 
+                ? (item.color || "").toLowerCase() 
+                : 'white'
+            }));
+            
+            console.log(`Final validated color assignments: ${colorAssignments.length} items`);
             apiSuccess = true;
-            console.log(`Color analysis completed successfully with ${colorAssignments.length} color assignments`);
             break;
           } catch (parseError) {
             console.error('Failed to parse API response content:', importanceData.choices[0].message.content);
