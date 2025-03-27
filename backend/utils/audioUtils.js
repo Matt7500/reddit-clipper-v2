@@ -117,15 +117,10 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
       targetDuration
   });
 
-  // 1. Normalize audio
-  console.log('Step 1: Normalizing audio');
-  const normalizedAudio = outputPath + '.normalized.wav';
-  await execAsync(`ffmpeg -i "${inputPath}" -af "volume=1.5" "${normalizedAudio}"`);
-  
+  // Get the base sample rate and duration of the input audio directly
   try {
-      // Get the base sample rate and duration of the input audio
-      const baseRate = await getAudioSampleRate(normalizedAudio);
-      const { stdout: durationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${normalizedAudio}"`);
+      const baseRate = await getAudioSampleRate(inputPath);
+      const { stdout: durationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}"`);
       const currentDuration = parseFloat(durationStdout);
       
       console.log(`Original audio stats:`, {
@@ -146,7 +141,7 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
       if (pitchUp) {
           // First remove silences regardless of hook or script
           const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-          await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
+          await execAsync(`ffmpeg -i "${inputPath}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
           
           // Get duration after silence removal
           const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
@@ -240,7 +235,7 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           
           // If silences need to be removed, do that first
           const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-          await execAsync(`ffmpeg -i "${normalizedAudio}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
+          await execAsync(`ffmpeg -i "${inputPath}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
           
           // Get duration after silence removal
           const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
@@ -291,9 +286,6 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
   } catch (error) {
       console.error('Error processing audio:', error);
       throw error;
-  } finally {
-      // Clean up intermediate files
-      await cleanupFiles([normalizedAudio]);
   }
 }
 
