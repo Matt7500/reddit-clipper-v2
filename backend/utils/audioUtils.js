@@ -157,15 +157,17 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           
           if (isHook) {
               // For hooks: fixed 1.3x speed and pitch increase
-              speedFactor = 1.3;
-              console.log(`Using true Premiere Pro style 1.3x speed+pitch increase for hook`);
+              // Need to compensate for the slight deviation in speed ratio to achieve exactly 1.3x
+              const targetSpeedRatio = 1.3;
+              const compensationFactor = 1.33; // Slightly higher to compensate for processing artifacts
+              console.log(`Using true Premiere Pro style with compensated factor ${compensationFactor.toFixed(2)} to achieve ${targetSpeedRatio}x speed+pitch increase for hook`);
               
+              // Use SAME implementation for hooks as scripts - asetrate for reliable pitch+speed change
               // Use asetrate to change both speed and pitch together, exactly like Premiere Pro
-              // When asetrate increases the sample rate by 30%, both tempo and pitch increase by 30%
-              const newSampleRate = Math.round(baseRate * 1.3);
+              const newSampleRate = Math.ceil(baseRate * compensationFactor);
               
-              console.log(`Processing hook with TRUE Premiere Pro style 1.3x speed+pitch increase`);
-              console.log(`Changing sample rate from ${baseRate} to ${newSampleRate} Hz to affect both speed and pitch`);
+              console.log(`Processing hook with asetrate: targeting ${targetSpeedRatio}x speed+pitch increase`);
+              console.log(`Changing sample rate from ${baseRate} to ${newSampleRate} Hz for hook (compensation factor applied)`);
               
               // Apply the sample rate change first (affects both pitch and tempo)
               const sampleRateChangedTemp = outputPath + '.rate-changed.wav';
