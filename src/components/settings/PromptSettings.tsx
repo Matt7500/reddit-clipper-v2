@@ -65,7 +65,7 @@ export const PromptSettings = ({
                 <Textarea
                   value={localHookPrompt}
                   onChange={(e) => setLocalHookPrompt(e.target.value)}
-                  className="min-h-[400px] bg-[#222222] border-[#3A3A3A] text-white font-mono text-sm"
+                  className="min-h-[400px] bg-[#222222] border-[#3A3A3A] text-white font-mono text-sm textarea-minimal-scrollbar"
                   placeholder="Enter system prompt for hook generation..."
                 />
                 <p className="text-xs text-muted-foreground">
@@ -85,7 +85,7 @@ export const PromptSettings = ({
                 <Textarea
                   value={localScriptPrompt}
                   onChange={(e) => setLocalScriptPrompt(e.target.value)}
-                  className="min-h-[400px] bg-[#222222] border-[#3A3A3A] text-white font-mono text-sm"
+                  className="min-h-[400px] bg-[#222222] border-[#3A3A3A] text-white font-mono text-sm textarea-minimal-scrollbar"
                   placeholder="Enter system prompt for script generation..."
                 />
                 <p className="text-xs text-muted-foreground">
