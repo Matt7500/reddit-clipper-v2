@@ -2244,14 +2244,19 @@ A **single, engaging question** that makes people want to share their story.
   }
 });
 
+// --- Add Health Check Endpoint (BEFORE Catch-all) ---
+app.get('/api/health', (req, res) => {
+  res.sendStatus(200); // Send OK status
+});
+// --- End Health Check Endpoint ---
+
 // Increase Remotion timeout to 10 minutes
 process.env.REMOTION_TIMEOUT = '600000'; // 10 minutes
 
-// --- Add Catch-all for Frontend Routing ---
-// After all API routes and specific static routes, serve index.html for any other GET request.
-// This allows client-side routing to work correctly.
+// --- Add Catch-all for Frontend Routing LAST ---
+// This should come after ALL other specific static routes and API routes.
 app.get('*', (req, res, next) => {
-  // Check if the request is for an API route or a file with an extension
+  // If the request is for an API endpoint or a file with an extension (already handled by static), skip
   if (req.path.startsWith('/api') || req.path.includes('.')) {
     return next(); // Skip to next middleware (likely a 404 handler)
   }
