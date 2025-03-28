@@ -1994,16 +1994,15 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 ---
 
 ### 🔥 **The Vibe & Themes:**  
-- Awkward social interactions  
-- Dumb mistakes & misunderstandings  
-- Embarrassing moments & cringe stories  
+- Awkward social interactions
 - Unexpected twists & weird encounters  
-- Hilarious childhood beliefs  
-- Workplace & school drama  
-- Family chaos & relationship mishaps  
-- Strange coincidences  
+- Workplace drama and stories
+- Terrible bosses and coworkers
+- Terrible customers and clients interactions
+- School and college drama stories
+- Family dramas and relationship dramas
 - Parent-child dynamics and stories
-- Sibling and extended family interactions
+- Terrible sibling and extended family dramas
 
 ---
 

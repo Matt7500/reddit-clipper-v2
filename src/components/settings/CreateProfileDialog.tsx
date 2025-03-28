@@ -59,6 +59,12 @@ export const CreateProfileDialog = ({
   const [newProfilePitchUp, setNewProfilePitchUp] = useState(false);
   const [subtitleSizeInput, setSubtitleSizeInput] = useState<string>("64");
   const [strokeSizeInput, setStrokeSizeInput] = useState<string>("8");
+  const [targetDurationInput, setTargetDurationInput] = useState<string>("60");
+  const [invalidInputs, setInvalidInputs] = useState<{[key: string]: boolean}>({
+    subtitleSize: false,
+    strokeSize: false,
+    targetDuration: false
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -76,6 +82,12 @@ export const CreateProfileDialog = ({
       setNewProfilePitchUp(false);
       setSubtitleSizeInput("64");
       setStrokeSizeInput("8");
+      setTargetDurationInput("60");
+      setInvalidInputs({
+        subtitleSize: false,
+        strokeSize: false,
+        targetDuration: false
+      });
       setActiveTab("basic");
     }
   }, [isOpen]);
@@ -116,6 +128,7 @@ export const CreateProfileDialog = ({
     setNewProfilePitchUp(false);
     setSubtitleSizeInput("64");
     setStrokeSizeInput("8");
+    setTargetDurationInput("60");
   };
 
   const allFonts = [...defaultFonts, ...customFonts];
@@ -214,14 +227,33 @@ export const CreateProfileDialog = ({
                 <div className="space-y-2">
                   <label className="text-sm text-muted-foreground">Target Duration (seconds)</label>
                   <Input 
-                    type="number"
-                    min={1}
-                    max={600}
+                    type="text"
                     placeholder="Enter target video duration"
-                    value={newProfileTargetDuration}
-                    onChange={(e) => setNewProfileTargetDuration(Math.max(1, Math.min(600, parseInt(e.target.value) || 60)))}
-                    className="bg-[#2A2A2A] border-[#3A3A3A]"
+                    value={targetDurationInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setTargetDurationInput(e.target.value);
+                      // Mark as invalid if not a number
+                      setInvalidInputs({
+                        ...invalidInputs,
+                        targetDuration: isNaN(Number(e.target.value))
+                      });
+                    }}
+                    onBlur={() => {
+                      // Convert to number and apply constraints when focus is lost
+                      const parsed = parseInt(targetDurationInput);
+                      const newDuration = isNaN(parsed) ? 60 : Math.max(0, Math.min(600, parsed));
+                      setTargetDurationInput(newDuration.toString());
+                      setNewProfileTargetDuration(newDuration);
+                      setInvalidInputs({
+                        ...invalidInputs,
+                        targetDuration: false
+                      });
+                    }}
+                    className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.targetDuration ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+                  {invalidInputs.targetDuration && (
+                    <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
+                  )}
                 </div>
               </div>
             </TabsContent>
@@ -285,6 +317,72 @@ export const CreateProfileDialog = ({
                       )}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm text-muted-foreground">Subtitle Text Size</label>
+                    <Input 
+                      type="text"
+                      placeholder="Enter subtitle text size"
+                      value={subtitleSizeInput}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        // Allow typing by updating the string state
+                        setSubtitleSizeInput(e.target.value);
+                        // Mark as invalid if not a number
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          subtitleSize: isNaN(Number(e.target.value))
+                        });
+                      }}
+                      onBlur={() => {
+                        // Convert to number and apply constraints only when focus is lost
+                        const parsed = parseInt(subtitleSizeInput);
+                        const newSize = isNaN(parsed) ? 64 : Math.max(0, parsed);
+                        setSubtitleSizeInput(newSize.toString());
+                        setNewProfileSubtitleSize(newSize);
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          subtitleSize: false
+                        });
+                      }}
+                      className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.subtitleSize ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {invalidInputs.subtitleSize && (
+                      <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm text-muted-foreground">Subtitle Outline Size</label>
+                    <Input 
+                      type="text"
+                      placeholder="Enter stroke size"
+                      value={strokeSizeInput}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        // Allow typing by updating the string state
+                        setStrokeSizeInput(e.target.value);
+                        // Mark as invalid if not a number
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          strokeSize: isNaN(Number(e.target.value))
+                        });
+                      }}
+                      onBlur={() => {
+                        // Convert to number and apply constraints only when focus is lost
+                        const parsed = parseInt(strokeSizeInput);
+                        const newSize = isNaN(parsed) ? 8 : Math.max(0, parsed);
+                        setStrokeSizeInput(newSize.toString());
+                        setNewProfileStrokeSize(newSize);
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          strokeSize: false
+                        });
+                      }}
+                      className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.strokeSize ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                    />
+                    {invalidInputs.strokeSize && (
+                      <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-4">
                   <div className="flex-1 space-y-2">
@@ -353,48 +451,6 @@ export const CreateProfileDialog = ({
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="flex gap-4">
-                  <div className="flex-1 space-y-2">
-                    <label className="text-sm text-muted-foreground">Subtitle Text Size</label>
-                    <Input 
-                      type="text"
-                      placeholder="Enter subtitle text size"
-                      value={subtitleSizeInput}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        // Allow typing by updating the string state
-                        setSubtitleSizeInput(e.target.value);
-                      }}
-                      onBlur={() => {
-                        // Convert to number and apply constraints only when focus is lost
-                        const parsed = parseInt(subtitleSizeInput);
-                        const newSize = isNaN(parsed) ? 64 : parsed;
-                        setSubtitleSizeInput(newSize.toString());
-                        setNewProfileSubtitleSize(newSize);
-                      }}
-                      className="bg-[#2A2A2A] border-[#3A3A3A]"
-                    />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <label className="text-sm text-muted-foreground">Subtitle Outline Size</label>
-                    <Input 
-                      type="text"
-                      placeholder="Enter stroke size"
-                      value={strokeSizeInput}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        // Allow typing by updating the string state
-                        setStrokeSizeInput(e.target.value);
-                      }}
-                      onBlur={() => {
-                        // Convert to number and apply constraints only when focus is lost
-                        const parsed = parseInt(strokeSizeInput);
-                        const newSize = isNaN(parsed) ? 8 : parsed;
-                        setStrokeSizeInput(newSize.toString());
-                        setNewProfileStrokeSize(newSize);
-                      }}
-                      className="bg-[#2A2A2A] border-[#3A3A3A]"
-                    />
-                  </div>
                 </div>
               </div>
             </TabsContent>

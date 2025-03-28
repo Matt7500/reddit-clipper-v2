@@ -39,6 +39,12 @@ export const EditProfileDialog = ({
   const allFonts = [...defaultFonts, ...customFonts];
   const [subtitleSizeInput, setSubtitleSizeInput] = useState<string>("");
   const [strokeSizeInput, setStrokeSizeInput] = useState<string>("");
+  const [targetDurationInput, setTargetDurationInput] = useState<string>("");
+  const [invalidInputs, setInvalidInputs] = useState<{[key: string]: boolean}>({
+    subtitleSize: false,
+    strokeSize: false,
+    targetDuration: false
+  });
 
   // Only reset active tab when dialog first opens
   useEffect(() => {
@@ -60,6 +66,13 @@ export const EditProfileDialog = ({
           stroke_size: 8
         });
       }
+
+      if (editingProfile && (editingProfile.target_duration === undefined || editingProfile.target_duration === null)) {
+        onEditingProfileChange({
+          ...editingProfile,
+          target_duration: 60
+        });
+      }
     }
   }, [isOpen, editingProfile, onEditingProfileChange]);
 
@@ -68,6 +81,7 @@ export const EditProfileDialog = ({
     if (editingProfile) {
       setSubtitleSizeInput(editingProfile.subtitle_size?.toString() || "64");
       setStrokeSizeInput(editingProfile.stroke_size?.toString() || "8");
+      setTargetDurationInput(editingProfile.target_duration?.toString() || "60");
     }
   }, [editingProfile?.id]);
 
@@ -177,17 +191,36 @@ export const EditProfileDialog = ({
                 <div className="space-y-2">
                   <label className="text-sm text-muted-foreground">Target Duration (seconds)</label>
                   <Input 
-                    type="number"
-                    min={1}
-                    max={600}
+                    type="text"
                     placeholder="Enter target video duration"
-                    value={editingProfile.target_duration || 60}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => onEditingProfileChange({ 
-                      ...editingProfile, 
-                      target_duration: Math.max(1, Math.min(600, parseInt(e.target.value) || 60)) 
-                    })}
-                    className="bg-[#2A2A2A] border-[#3A3A3A]"
+                    value={targetDurationInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setTargetDurationInput(e.target.value);
+                      // Mark as invalid if not a number
+                      setInvalidInputs({
+                        ...invalidInputs,
+                        targetDuration: isNaN(Number(e.target.value))
+                      });
+                    }}
+                    onBlur={() => {
+                      // Convert to number and apply constraints when focus is lost
+                      const parsed = parseInt(targetDurationInput);
+                      const newDuration = isNaN(parsed) ? 60 : Math.max(0, Math.min(600, parsed));
+                      setTargetDurationInput(newDuration.toString());
+                      onEditingProfileChange({
+                        ...editingProfile,
+                        target_duration: newDuration
+                      });
+                      setInvalidInputs({
+                        ...invalidInputs,
+                        targetDuration: false
+                      });
+                    }}
+                    className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.targetDuration ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+                  {invalidInputs.targetDuration && (
+                    <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
+                  )}
                 </div>
               </div>
             </TabsContent>
@@ -262,19 +295,31 @@ export const EditProfileDialog = ({
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         // Allow typing by updating the string state
                         setSubtitleSizeInput(e.target.value);
+                        // Mark as invalid if not a number
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          subtitleSize: isNaN(Number(e.target.value))
+                        });
                       }}
                       onBlur={() => {
                         // Convert to number and apply constraints only when focus is lost
                         const parsed = parseInt(subtitleSizeInput);
-                        const newSize = isNaN(parsed) ? 64 : parsed;
+                        const newSize = isNaN(parsed) ? 64 : Math.max(0, parsed);
                         setSubtitleSizeInput(newSize.toString());
-                        onEditingProfileChange({ 
-                          ...editingProfile, 
+                        onEditingProfileChange({
+                          ...editingProfile,
                           subtitle_size: newSize
                         });
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          subtitleSize: false
+                        });
                       }}
-                      className="bg-[#2A2A2A] border-[#3A3A3A]"
+                      className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.subtitleSize ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                     />
+                    {invalidInputs.subtitleSize && (
+                      <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
+                    )}
                   </div>
                   <div className="flex-1 space-y-2">
                     <label className="text-sm text-muted-foreground">Subtitle Outline Size</label>
@@ -285,19 +330,31 @@ export const EditProfileDialog = ({
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         // Allow typing by updating the string state
                         setStrokeSizeInput(e.target.value);
+                        // Mark as invalid if not a number
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          strokeSize: isNaN(Number(e.target.value))
+                        });
                       }}
                       onBlur={() => {
                         // Convert to number and apply constraints only when focus is lost
                         const parsed = parseInt(strokeSizeInput);
-                        const newSize = isNaN(parsed) ? 8 : parsed;
+                        const newSize = isNaN(parsed) ? 8 : Math.max(0, parsed);
                         setStrokeSizeInput(newSize.toString());
-                        onEditingProfileChange({ 
-                          ...editingProfile, 
+                        onEditingProfileChange({
+                          ...editingProfile,
                           stroke_size: newSize
                         });
+                        setInvalidInputs({
+                          ...invalidInputs,
+                          strokeSize: false
+                        });
                       }}
-                      className="bg-[#2A2A2A] border-[#3A3A3A]"
+                      className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.strokeSize ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                     />
+                    {invalidInputs.strokeSize && (
+                      <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-4">
