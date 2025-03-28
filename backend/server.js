@@ -463,23 +463,30 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+
+// --- Serve Frontend Static Files FIRST ---
+// Serve static files from the Vite build output directory (../dist)
+const __frontendDist = path.resolve(__dirname, '..', 'dist');
+console.log(`Serving frontend static files from: ${__frontendDist}`);
+app.use(express.static(__frontendDist));
+// --- End Frontend Static Serving ---
+
+// --- Serve Specific Backend Static Assets AFTER Frontend ---
+// These routes will be checked *after* the general static handler above.
+// If a file exists in `../dist` (e.g., `../dist/videos/file.mp4`), it will be served from there.
+// If not found there, Express will check these specific directories.
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));
 app.use('/audio', express.static(path.join(__dirname, 'public/audio')));
 app.use('/images', express.static(path.join(__dirname, 'public/images')));
+// Serve Remotion assets - ensure this path is correct relative to __dirname
 app.use('/assets', express.static(path.join(__dirname, 'remotion/assets'), {
-  setHeaders: (res, path) => {
-    // Set caching headers
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-    res.setHeader('Accept-Ranges', 'bytes');
-    
-    // Set content type for video files
-    if (path.endsWith('.mp4')) {
-      res.setHeader('Content-Type', 'video/mp4');
-    }
-  }
+  maxAge: '1d' // Example cache control
 }));
+// --- End Backend Static Assets ---
 
 // Ensure directories exist
 const videosDir = path.join(__dirname, 'public/videos');
@@ -1792,10 +1799,13 @@ app.post('/api/generate-script', async (req, res) => {
 - **Total Length:** The story MUST be MINIMUM 300 words in length and maximum 330 words.
 - **Hook:** Maximum 10 words, phrased as a question
 - **Format:** Plain text only
+
+## STORY GUIDELINES - MUST FOLLOW THESE EXACT GUIDELINES
 - **Dialogue** Less than 5 lines of dialogue total that are brief sentences.
 - **Tone:** Deadpan, sarcastic, dry humor
-- **Plot:** The story must be written about something that is politically or morally incorrect, controversial, or offensive.
-- **Goal:** The story must be written to make the audience respond to the story relating to their own experiences or political beliefs.
+- **Plot:** The story must be written about something that is politically or morally incorrect, controversial, or offensive. The story should elicit a strong NEGATIVE emotional response from the reader.
+- **Antagonist:** The antagonist must be highly unreasonabel, unlikable and NOT have any redeeming qualities.
+- **Protagonist:** The protagonist must be reasonable, relatable and have some redeeming qualities.
 
 ## STORY STRUCTURE - CRITICAL TIMING REQUIREMENTS
 1. **Opening Hook (First 5%):**
@@ -2237,32 +2247,60 @@ A **single, engaging question** that makes people want to share their story.
 // Increase Remotion timeout to 10 minutes
 process.env.REMOTION_TIMEOUT = '600000'; // 10 minutes
 
-const PORT = process.env.PORT || 3004;
-app.listen(PORT, 'localhost', () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Server accessible at http://localhost:${PORT}`);
-  console.log(`Audio files will be available at: http://localhost:${PORT}/audio/`);
-  console.log(`Images will be available at: http://localhost:${PORT}/images/`);
-  
-  // Pre-initialize Lambda on startup if credentials are available
-  if (AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
-    console.log('Pre-initializing Lambda...');
-    initializeLambda()
-      .then((func) => {
-        console.log(`Lambda function initialized: ${func.functionName}`);
-        
-        // Verify bucket name format
-        if (!remotionBucketName.startsWith('remotionlambda-')) {
-          console.warn(`Warning: Bucket name ${remotionBucketName} does not start with remotionlambda-. This may cause issues.`);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to initialize Lambda:', error);
-      });
-  } else {
-    console.warn('AWS credentials not found. Lambda rendering will not be available.');
+// --- Add Catch-all for Frontend Routing ---
+// After all API routes and specific static routes, serve index.html for any other GET request.
+// This allows client-side routing to work correctly.
+app.get('*', (req, res, next) => {
+  // Check if the request is for an API route or a file with an extension
+  if (req.path.startsWith('/api') || req.path.includes('.')) {
+    return next(); // Skip to next middleware (likely a 404 handler)
   }
-}); 
+  // Serve the main HTML file for client-side routing
+  res.sendFile(path.join(__frontendDist, 'index.html'), (err) => {
+    if (err) {
+      console.error("Error sending index.html:", err);
+      res.status(500).send(err);
+    }
+  });
+});
+// --- End Catch-all for Frontend Routing ---
+
+// Start the server
+const PORT = process.env.PORT || 3004;
+
+// Pre-initialize Lambda on startup if credentials are available
+if (AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
+  console.log('Pre-initializing Lambda...');
+  initializeLambda()
+    .then((func) => {
+      if (func && func.functionName) { // Check if func is valid
+        console.log(`Lambda function initialized: ${func.functionName}`);
+      } else {
+        console.warn('Lambda initialization finished, but function details seem incomplete.');
+      }
+      
+      // Start server after attempting Lambda initialization
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on http://0.0.0.0:${PORT} with Lambda initialized.`);
+        console.log(`Serving frontend from: ${__frontendDist}`);
+      });
+    })
+    .catch((error) => {
+      console.error('Failed to initialize Lambda:', error);
+      // Start server even if Lambda initialization fails
+      app.listen(PORT, '0.0.0.0', () => {
+        console.warn(`Server running on http://0.0.0.0:${PORT} WITHOUT successful Lambda initialization due to error.`);
+        console.log(`Serving frontend from: ${__frontendDist}`);
+      });
+    });
+} else {
+  console.warn('AWS credentials not found. Lambda rendering will not be available.');
+  // Start server without attempting Lambda initialization
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT} without Lambda (AWS credentials missing).`);
+    console.log(`Serving frontend from: ${__frontendDist}`);
+  });
+}
 
 // Add endpoint to update from GitHub
 app.post('/api/update-from-github', async (req, res) => {

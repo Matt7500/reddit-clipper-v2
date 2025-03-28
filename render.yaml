@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: reddit-clipper
-    env: node
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
-    envVars:
-      - key: NODE_ENV
-        value: production

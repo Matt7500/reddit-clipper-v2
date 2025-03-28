@@ -13,7 +13,8 @@
     "server:dev": "nodemon server.js",
     "backend": "cd backend && npm run start",
     "backend:dev": "cd backend && npm run dev",
-    "dev:all": "concurrently \"npm run dev\" \"npm run backend:dev\""
+    "dev:all": "concurrently \"npm run dev\" \"npm run backend:dev\"",
+    "start": "cd backend && node server.js"
   },
   "dependencies": {
     "@aws-sdk/s3-request-presigner": "^3.777.0",
