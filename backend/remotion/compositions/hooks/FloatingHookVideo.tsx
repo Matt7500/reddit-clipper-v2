@@ -80,12 +80,12 @@ export const FloatingHookVideo: React.FC<Props> = ({
     bubble: getS3AssetUrl(bucketName, bucketRegion, 'assets/bubble.svg'),
     share: getS3AssetUrl(bucketName, bucketRegion, 'assets/share.svg'),
     videos: {
-      video1: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/1.mp4'),
-      video2: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/2.mp4'),
-      video3: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/3.mp4'),
-      video4: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/4.mp4'),
-      video5: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/5.mp4'),
-      video6: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/6.mp4'),
+      video1: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/11.mp4'),
+      video2: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/22.mp4'),
+      video3: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/33.mp4'),
+      video4: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/44.mp4'),
+      video5: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/55.mp4'),
+      video6: getS3AssetUrl(bucketName, bucketRegion, 'assets/videos/66.mp4'),
     }
   }), [bucketName, bucketRegion]);
   
@@ -240,7 +240,7 @@ export const FloatingHookVideo: React.FC<Props> = ({
   };
 
   const gifStyle: React.CSSProperties = {
-    height: '45px',
+    height: '60px',
     width: 'auto',
     objectFit: 'contain',
   };

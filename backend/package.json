@@ -9,14 +9,16 @@
     "dev": "nodemon --config nodemon.json server.js"
   },
   "dependencies": {
-    "@remotion/bundler": "4.0.278",
-    "@remotion/captions": "4.0.278",
-    "@remotion/cli": "4.0.278",
-    "@remotion/google-fonts": "4.0.278",
-    "@remotion/motion-blur": "4.0.278",
-    "@remotion/renderer": "4.0.278",
-    "@remotion/lambda": "4.0.278",
-    "@remotion/studio": "4.0.278",
+    "@aws-sdk/s3-request-presigner": "^3.777.0",
+    "@remotion/bundler": "4.0.280",
+    "@remotion/captions": "4.0.280",
+    "@remotion/cli": "4.0.280",
+    "@remotion/gif": "4.0.280",
+    "@remotion/google-fonts": "4.0.280",
+    "@remotion/lambda": "4.0.280",
+    "@remotion/motion-blur": "4.0.280",
+    "@remotion/renderer": "4.0.280",
+    "@remotion/studio": "4.0.280",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "elevenlabs": "^1.52.0",
@@ -25,7 +27,7 @@
     "node-cache": "^5.1.2",
     "node-fetch": "^3.3.2",
     "openai": "^4.85.4",
-    "remotion": "4.0.278"
+    "remotion": "4.0.280"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

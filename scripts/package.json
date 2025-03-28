@@ -1,0 +1,7 @@
+{
+  "name": "gif-converter-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for converting GIFs to MP4",
+  "type": "module",
+  "private": true
+} 

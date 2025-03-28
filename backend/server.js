@@ -1797,12 +1797,42 @@ app.post('/api/generate-script', async (req, res) => {
 - **Plot:** The story must be written about something that is politically or morally incorrect, controversial, or offensive.
 - **Goal:** The story must be written to make the audience respond to the story relating to their own experiences or political beliefs.
 
-## STORY STRUCTURE
-1. **Hook (First Line):** An engaging question that sets up the premise
-2. **Setup (First 25%):** Introduce protagonist and the annoying situation/antagonist
-3. **Escalation (Middle 65%):** Build tension with increasingly unreasonable antagonist behavior
-4. **Climax (Final 10%):** Deliver satisfying instant karma/comeuppance to the antagonist
-5. **Resolution:** End immediately after the payoff with a punchy final line
+## STORY STRUCTURE - CRITICAL TIMING REQUIREMENTS
+1. **Opening Hook (First 5%):**
+   - Start with an attention-grabbing line that creates immediate interest
+   - Set initial scene without revealing the True Climax of the story
+   - Create a sense of intrigue or conflict
+
+2. **Setup Phase (Next 20%):**
+   - Introduce key characters and initial situation
+   - Establish the normal world or context
+   - Plant subtle seeds for later payoff
+   - NO major revelations or climactic elements
+
+3. **Progressive Tension (Middle 40%):**
+   Phase 1 (~15%): Initial conflict introduction
+   - Introduce the first layer of conflict
+   - Begin building reader investment
+   
+   Phase 2 (~15%): First complications
+   - Add new layers of tension
+   - Deepen the conflict without resolving it
+   
+   Phase 3 (~10%): Rising stakes
+   - Escalate the situation
+   - Build anticipation for resolution
+
+4. **False Peak (Next 25%):**
+   - Create misdirection that suggests one outcome
+   - Lead readers down an expected path
+   - Set up for subversion of expectations
+   - Plant red herrings that seem obvious
+
+5. **True Climax (Final 10% ONLY):**
+   - Deliver the REAL unexpected twist
+   - Reveal the actual resolution
+   - End with immediate, satisfying payoff
+   - No extended aftermath or reflection
 
 
 ## WRITING STYLE REQUIREMENTS
