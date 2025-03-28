@@ -269,7 +269,7 @@ export function MultiChannelScriptModal({
       }, 500);
       
       // Make API call to generate hook only
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/generate-script`, {
+      const response = await fetch('/api/generate-script', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -371,7 +371,7 @@ export function MultiChannelScriptModal({
       }, 300);
       
       // Make API call to generate script based on the hook
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/generate-script`, {
+      const response = await fetch('/api/generate-script', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
