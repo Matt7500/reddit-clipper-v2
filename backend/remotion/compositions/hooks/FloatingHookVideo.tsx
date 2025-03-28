@@ -234,7 +234,7 @@ export const FloatingHookVideo: React.FC<Props> = ({
 
   const gifContainerStyle: React.CSSProperties = {
     display: 'flex',
-    gap: '2px',
+    gap: '0px',
     alignItems: 'center',
     marginTop: '-5px',
   };
