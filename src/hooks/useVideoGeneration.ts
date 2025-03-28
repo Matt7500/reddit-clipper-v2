@@ -467,7 +467,7 @@ export function useVideoGeneration() {
     setupStepFallback('audio', 'transcription', 60000); // 1 minute for audio processing
 
     console.log('Making API request to generate video, multi-channel mode:', isMultiChannelModeParam);
-    const response = await fetch(`${API_URL}/api/generate-video`, {
+    const response = await fetch(`/api/generate-video`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -8,8 +8,9 @@ export interface CacheOptions {
 }
 
 class CacheService {
-  // Use the correct API URL with port 8080
-  private readonly API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+  private readonly API_URL = import.meta.env.VITE_API_URL || '';
+  private cache: Cache | null = null;
+  private static instance: CacheService;
 
   // Settings Cache Methods
   async getSettings<T>(userId: string, options: CacheOptions = {}): Promise<T | null> {
@@ -210,6 +211,33 @@ class CacheService {
       });
     } catch (error) {
       console.error('Error updating server cache:', error);
+    }
+  }
+
+  async fetchFromServer<T>(endpoint: string): Promise<T | null> {
+    if (!this.API_URL && !endpoint.startsWith('/')) {
+      console.warn(`fetchFromServer endpoint "${endpoint}" does not start with / and API_URL is empty. Prepending /.`);
+      endpoint = `/${endpoint}`;
+    }
+    const url = endpoint.startsWith('/') ? `${this.API_URL}${endpoint}` : `${this.API_URL}/${endpoint}`; // Ensure endpoint starts with / if API_URL is empty
+    
+    try {
+      console.log(`Fetching from server: ${url}`);
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching from server:', error);
+      return null;
     }
   }
 }
