@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +10,11 @@ import { toast } from "@/components/ui/use-toast";
 
 const PAGE_SIZE = 8;
 
-export const VideoGallery = () => {
+interface VideoGalleryProps {
+  refreshTrigger?: number;
+}
+
+export const VideoGallery = ({ refreshTrigger }: VideoGalleryProps) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState<VideoType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +30,8 @@ export const VideoGallery = () => {
     ascending: false,
   });
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const initialRender = useRef(true); // Ref to track initial mount
 
   const fetchVideos = async () => {
     if (!user) return;
@@ -49,6 +55,25 @@ export const VideoGallery = () => {
   useEffect(() => {
     fetchVideos();
   }, [user, pagination.page, sort]);
+
+  // Effect to handle external refresh trigger
+  useEffect(() => {
+    // Don't run on initial mount or if trigger is undefined/initial value (0)
+    if (initialRender.current || refreshTrigger === undefined || refreshTrigger === 0) {
+      initialRender.current = false; // Mark initial mount as done after first run
+      return;
+    }
+
+    console.log('VideoGallery: Refresh triggered by new video completion!');
+    setPagination({ page: 0, pageSize: PAGE_SIZE });
+    setSort({ column: 'created_at', ascending: false });
+    // fetchVideos() will be called by the useEffect above when pagination/sort state changes.
+    // Explicitly calling fetchVideos() ensures it runs even if dependencies haven't changed yet
+    // and handles the case where user might be null briefly.
+    if (user) {
+      fetchVideos();
+    }
+  }, [refreshTrigger, user]); // Depend on refreshTrigger and user
 
   const handleDelete = async (videoId: string) => {
     try {

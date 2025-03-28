@@ -24,6 +24,8 @@ const Index = () => {
   
   // Only keep the MultiChannelScriptModal state
   const [isMultiChannelScriptModalOpen, setIsMultiChannelScriptModalOpen] = useState(false);
+  // State for triggering VideoGallery refresh
+  const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
   
   // State for CreateProfileDialog
   const [isCreateProfileDialogOpen, setIsCreateProfileDialogOpen] = useState(false);
@@ -54,6 +56,14 @@ const Index = () => {
     currentChannelName,
     currentChannelImage
   } = useVideoGeneration();
+
+  // Effect to trigger gallery refresh when completion dialog opens
+  useEffect(() => {
+    if (isMultiChannelCompletedDialogOpen) {
+      console.log("Index: Completion dialog opened, triggering gallery refresh.");
+      setGalleryRefreshKey(prev => prev + 1);
+    }
+  }, [isMultiChannelCompletedDialogOpen]);
 
   // Function to handle image upload for new channel
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,7 +237,7 @@ const Index = () => {
         </div>
 
         <div className="w-full">
-          <VideoGallery />
+          <VideoGallery refreshTrigger={galleryRefreshKey} />
         </div>
       </div>
 
