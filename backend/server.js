@@ -2191,7 +2191,8 @@ A **single, engaging question** that makes people want to share their story.
               content: customHook
             }
           ],
-          temperature: 0.7
+          temperature: 0.7,
+          max_tokens: 2000 // Explicitly set max tokens for script generation
         });
 
         // Add defensive check for API response structure
