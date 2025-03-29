@@ -510,7 +510,7 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
           
           // Use OpenRouter with OpenAI SDK format - single implementation for both paths
           const apiKey = openrouterApiKey || openaiApiKey; // Use whichever key is available
-          const modelToUse = 'anthropic/claude-3.7-sonnet';
+          const modelToUse = 'google/gemini-2.5-pro-exp-03-25:free';
           
           const importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
