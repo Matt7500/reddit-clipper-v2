@@ -102,8 +102,8 @@ const s3Client = new S3Client({
 });
 
 // Lambda configuration
-const LAMBDA_MEMORY_SIZE = 4096; // 4GB RAM
-const LAMBDA_TIMEOUT = 300; // 5 minutes
+const LAMBDA_MEMORY_SIZE = 2048; // 2GB RAM
+const LAMBDA_TIMEOUT = 180; // 3 minutes
 const LAMBDA_DISK_SIZE = 10240; // 10GB disk space
 
 // Store the bucket name returned by getOrCreateBucket
@@ -935,10 +935,10 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
         inputProps,
         codec: 'h264',
         imageFormat: 'jpeg',
-        videoBitrate: '6M',
+        videoBitrate: '4M',
         x264Preset: 'fast',
         maxRetries: 3,
-        framesPerLambda: 20, // Lower value for better reliability
+        framesPerLambda: 30, // Lower value for better reliability
         concurrencyPerLambda: 3, // Reduce concurrency to avoid overwhelming Lambda
         privacy: 'private',
         frameRange: frameRange,
