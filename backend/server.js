@@ -661,7 +661,7 @@ async function createBackgroundVideo(requiredDurationSeconds, background_video_t
 }
 
 // Function to render hook video using Remotion Lambda
-async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, hook_animation_type = 'fall') {
+async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, openrouterApiKey = null, hook_animation_type = 'fall') {
   let isProcessComplete = false; // Add variable declaration
   // Array to track S3 assets for cleanup
   const s3Assets = [];
@@ -1658,6 +1658,7 @@ app.post('/api/generate-video', async (req, res) => {
         background_video_type,
         userId,
         timestamp,
+        openrouterApiKey,
         hook_animation_type
       );
 
@@ -1754,7 +1755,7 @@ app.post('/api/login', async (req, res) => {
 // Add endpoint for generating scripts
 app.post('/api/generate-script', async (req, res) => {
   try {
-    const { openrouterApiKey, customHook, hookOnly, userId } = req.body;
+    const { openrouterApiKey, customHook, hookOnly, userId, openrouterModel } = req.body;
 
     console.log('Received request with OpenRouter API key:', openrouterApiKey);
     console.log('Received request with custom hook:', customHook);
@@ -2120,7 +2121,7 @@ A **single, engaging question** that makes people want to share their story.
 
         // Generate hook using OpenRouter with custom/default prompt
         const hookCompletion = await openrouterClient.chat.completions.create({
-          model: openrouterModel,
+          model: openrouterModel || "anthropic/claude-3.7-sonnet", // Use provided model or default
           messages: [
             {
               role: "system",
@@ -2167,7 +2168,7 @@ A **single, engaging question** that makes people want to share their story.
 
       try {
         const storyCompletion = await openrouterClient.chat.completions.create({
-          model: openrouterModel,
+          model: openrouterModel || "anthropic/claude-3.7-sonnet", // Use provided model or default
           messages: [
             {
               role: "system",

@@ -475,7 +475,7 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
       const systemPrompt = channelStyle === 'single' 
         ? `You are a text analyzer that identifies important words and phrases in text and assigns them colors. You must put a focus on coloring phrases rather than single words.
             Rules:
-            1. The vast majority of words should remain white (default)
+            1. The majority of words should remain white (default)
             2. Key phrases or words crucial to the meaning should be yellow (can be multiple consecutive words)
             3. Action phrases or dramatic emphasis should be red (can be multiple consecutive words)
             4. Positive/successful phrases should be green (can be multiple consecutive words)
@@ -509,15 +509,14 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
           console.log(`Color analysis attempt ${colorAttempt}/${MAX_RETRIES}`);
           
           // Use OpenRouter with OpenAI SDK format - single implementation for both paths
-          const apiKey = openrouterApiKey || openaiApiKey; // Use whichever key is available
-          const modelToUse = 'google/gemini-2.5-pro-exp-03-25:free';
+          const apiKey = openrouterApiKey; // Use whichever key is available
+          const modelToUse = 'anthropic/claude-3.7-sonnet';
           
           const importanceResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${apiKey}`,
-              'HTTP-Referer': 'https://reddit-clipper.com', // Identify your app to OpenRouter
               'X-Title': 'Reddit Clipper' // Optional app name for OpenRouter stats
             },
             body: JSON.stringify({
@@ -532,7 +531,8 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
                   content: `Analyze this text and return a JSON array where each word has a color (white, yellow, red, green, or purple). Text: "${directData.text}"`
                 }
               ],
-              temperature: 0.8,
+              temperature: 1, // Keep temperature for some variability
+              max_tokens: 8000, // Further increased token limit
               response_format: { type: "json_object" } // Request JSON format specifically
             })
           });
@@ -585,6 +585,17 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             try {
               finalColorAssignments = JSON.parse(cleanedContent);
               console.log("Successfully parsed full JSON directly");
+
+              // Check if the parsed result is a single object and wrap it in an array
+              if (finalColorAssignments && typeof finalColorAssignments === 'object' && !Array.isArray(finalColorAssignments)) {
+                console.warn("Parsed JSON was a single object, wrapping in an array.");
+                finalColorAssignments = [finalColorAssignments];
+              } else if (!Array.isArray(finalColorAssignments)) {
+                // If it's not an array and not an object we can wrap, treat as parse failure
+                console.warn("Parsed JSON was not an array or a single object.");
+                throw new Error("Parsed JSON is not an array"); // Trigger the catch block for fallback parsing
+              }
+
             } catch (fullParseError) {
               console.warn(`Initial full JSON parsing failed: ${fullParseError.message}`);
               
@@ -678,29 +689,34 @@ export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey,
             console.log(`Waiting ${RETRY_DELAY/1000} seconds before retry...`);
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
           } else {
-            console.warn('All color analysis attempts failed, using default colors');
-            // Create default color assignments (all white)
-            const words = directData.text.split(' ');
-            colorAssignments = words.map(word => ({ word, color: 'white' }));
-            apiSuccess = true; // Mark as success with fallback colors
-            console.log(`Created default color assignments for ${words.length} words`);
+            console.warn('All color analysis attempts failed. Keeping original timings and setting all words to white.');
+            // Use the already processed words with original timings
+            // Set all colors to white as a fallback
+            processedWords.forEach(word => { word.color = 'white'; });
+            apiSuccess = true; // Mark as success since we have timings
+            // No need to set colorAssignments, we directly modify processedWords
           }
         }
       }
 
-      // Create a map of words to their colors for easy lookup
-      const wordColorMap = new Map();
-      colorAssignments.forEach(item => {
-        wordColorMap.set(item.word.toLowerCase(), item.color);
-      });
-      
-      // Apply colors to the processed words
-      for (const word of processedWords) {
-        word.color = wordColorMap.get(word.text.toLowerCase()) || 'white';
+      // If color analysis succeeded (or fell back to white), apply colors
+      // This part is only needed if color analysis was successful and didn't use the fallback
+      if (colorAssignments && colorAssignments.length > 0) {
+        // Create a map of words to their colors for easy lookup
+        const wordColorMap = new Map();
+        colorAssignments.forEach(item => {
+          wordColorMap.set(item.word.toLowerCase(), item.color);
+        });
+        
+        // Apply colors to the processed words
+        for (const word of processedWords) {
+          word.color = wordColorMap.get(word.text.toLowerCase()) || 'white';
+        }
       }
-      
-      console.log(`Transcribed into ${processedWords.length} words with colors`);
-      
+
+      // Log the final result
+      console.log(`Transcribed into ${processedWords.length} words with colors (fallback may apply)`);
+
       return processedWords;
       
     } catch (error) {
