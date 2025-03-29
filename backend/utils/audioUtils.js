@@ -131,11 +131,9 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
 
       // Define silence removal threshold and create the filter
       const silence_threshold_db = -35;
+      const min_pause_duration = 0.2; // Remove pauses longer than 0.2 seconds
       const silence_filter = (
-          `silenceremove=start_periods=1:start_duration=0:`+
-          `start_threshold=${silence_threshold_db}dB:detection=peak,`+
-          `silenceremove=stop_periods=-1:stop_duration=0:`+
-          `stop_threshold=${silence_threshold_db}dB:detection=peak`
+          `silenceremove=stop_periods=-1:stop_duration=${min_pause_duration}:stop_threshold=${silence_threshold_db}dB`
       );
       
       if (pitchUp) {
