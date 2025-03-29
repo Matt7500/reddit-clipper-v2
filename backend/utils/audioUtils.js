@@ -294,10 +294,9 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
  * @param {string} openaiApiKey - OpenAI API key
  * @param {string} channelStyle - Channel style (default: 'grouped')
  * @param {string|null} openrouterApiKey - OpenRouter API key
- * @param {string|null} openrouterModel - OpenRouter model
  * @returns {Promise<Array>} - Array of processed words with timing
  */
-export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channelStyle = 'grouped', openrouterApiKey = null, openrouterModel = null) {
+export async function transcribeAudio(audioPath, elevenlabsApiKey, openaiApiKey, channelStyle = 'grouped', openrouterApiKey = null) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000; // 2 seconds
   

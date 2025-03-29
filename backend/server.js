@@ -661,7 +661,7 @@ async function createBackgroundVideo(requiredDurationSeconds, background_video_t
 }
 
 // Function to render hook video using Remotion Lambda
-async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, openrouterApiKey = null, openrouterModel = null, hook_animation_type = 'fall') {
+async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, channelImageUrl, hookText, scriptText, outputPath, openaiApiKey, elevenlabsApiKey, channelStyle = 'grouped', font = 'Jellee', fontUrl = null, has_background_music = false, subtitle_size = 64, stroke_size = 8, res, filesToCleanup, background_video_type = 'gameplay', userId, timestamp, hook_animation_type = 'fall') {
   let isProcessComplete = false; // Add variable declaration
   // Array to track S3 assets for cleanup
   const s3Assets = [];
@@ -699,7 +699,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
     console.log('Getting word-level transcription...');
     let wordTimings;
     try {
-      wordTimings = await transcribeAudio(scriptAudioPath, elevenlabsApiKey, openaiApiKey, channelStyle, openrouterApiKey, openrouterModel);
+      wordTimings = await transcribeAudio(scriptAudioPath, elevenlabsApiKey, openaiApiKey, channelStyle, openrouterApiKey);
       console.log('Transcription completed successfully');
     } catch (transcriptionError) {
       console.error('Transcription failed with error:', transcriptionError);
@@ -939,7 +939,7 @@ async function renderHookVideo(hookAudioPath, scriptAudioPath, channelName, chan
         x264Preset: 'fast',
         maxRetries: 3,
         framesPerLambda: 30, // Lower value for better reliability
-        concurrencyPerLambda: 3, // Reduce concurrency to avoid overwhelming Lambda
+        concurrencyPerLambda: 2, // Reduce concurrency to avoid overwhelming Lambda
         privacy: 'private',
         frameRange: frameRange,
         outName: `${userId}-${timestamp}.mp4`,
@@ -1429,7 +1429,6 @@ app.post('/api/generate-video', async (req, res) => {
       elevenlabsVoiceModel,
       openaiApiKey,
       openrouterApiKey,
-      openrouterModel,
       useUserSettings = true,
       has_background_music,
       target_duration,
@@ -1478,14 +1477,6 @@ app.post('/api/generate-video', async (req, res) => {
       });
     }
 
-    // If OpenRouter is being used, ensure the model is specified
-    if (openrouterApiKey && !openrouterModel) {
-      return res.status(400).json({
-        success: false,
-        error: 'OpenRouter model is required when using OpenRouter API. Please specify a model in your settings.'
-      });
-    }
-    
     // Send initial status update that we're using Lambda
     res.write(JSON.stringify({
       type: 'status_update',
@@ -1667,8 +1658,6 @@ app.post('/api/generate-video', async (req, res) => {
         background_video_type,
         userId,
         timestamp,
-        openrouterApiKey,
-        openrouterModel,
         hook_animation_type
       );
 
@@ -1712,7 +1701,7 @@ app.post('/api/generate-video', async (req, res) => {
 // Add login endpoint to save user settings
 app.post('/api/login', async (req, res) => {
   try {
-    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, openrouterApiKey, openrouterModel, otherSettings } = req.body;
+    const { userId, elevenlabsApiKey, elevenlabsVoiceModel, openaiApiKey, openrouterApiKey, otherSettings } = req.body;
     
     if (!userId) {
       return res.status(400).json({ 
@@ -1724,7 +1713,7 @@ app.post('/api/login', async (req, res) => {
     console.log(`User login: ${userId}`);
     
     // Save settings to cache on login if provided
-    if (elevenlabsApiKey || elevenlabsVoiceModel || openaiApiKey || openrouterApiKey || openrouterModel || otherSettings) {
+    if (elevenlabsApiKey || elevenlabsVoiceModel || openaiApiKey || openrouterApiKey || otherSettings) {
       const existingSettings = userSettingsCache.get(userId) || {};
       
       userSettingsCache.set(userId, {
@@ -1733,7 +1722,6 @@ app.post('/api/login', async (req, res) => {
         ...(elevenlabsVoiceModel && { elevenlabsVoiceModel }),
         ...(openaiApiKey && { openaiApiKey }),
         ...(openrouterApiKey && { openrouterApiKey }),
-        ...(openrouterModel && { openrouterModel }),
         ...(otherSettings && { ...otherSettings }),
         lastUpdated: new Date().toISOString()
       });
@@ -1766,10 +1754,9 @@ app.post('/api/login', async (req, res) => {
 // Add endpoint for generating scripts
 app.post('/api/generate-script', async (req, res) => {
   try {
-    const { openrouterApiKey, openrouterModel, customHook, hookOnly, userId } = req.body;
+    const { openrouterApiKey, customHook, hookOnly, userId } = req.body;
 
     console.log('Received request with OpenRouter API key:', openrouterApiKey);
-    console.log('Received request with OpenRouter model:', openrouterModel);
     console.log('Received request with custom hook:', customHook);
     console.log('Hook only mode:', hookOnly);
     console.log('User ID:', userId);
