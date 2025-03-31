@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Progress } from "@/components/ui/progress";
 
 export interface GenerationStep {
   id: string;
@@ -8,6 +9,7 @@ export interface GenerationStep {
   description: string;
   status: 'waiting' | 'processing' | 'completed' | 'error';
   error?: string;
+  progress?: number;
 }
 
 interface ProgressModalProps {
@@ -143,6 +145,12 @@ export function ProgressModal({
                     {step.status === 'error' && step.error && (
                       <div className="mt-2 p-2 rounded bg-red-500/10 border border-red-500/20">
                         <p className="text-xs text-red-400 break-words">{step.error}</p>
+                      </div>
+                    )}
+                    {step.status === 'processing' && typeof step.progress === 'number' && (
+                      <div className="mt-2">
+                        <Progress value={step.progress} className="h-1 bg-[#3A3A3A]" indicatorClassName="bg-primary" />
+                        <p className="text-xs text-primary text-right mt-1">{step.progress}%</p>
                       </div>
                     )}
                   </div>

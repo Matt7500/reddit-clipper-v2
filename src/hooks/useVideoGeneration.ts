@@ -62,7 +62,7 @@ export function useVideoGeneration() {
       status: 'waiting'
     },
     {
-      id: 'video',
+      id: 'video_generation',
       title: 'Video Generation',
       description: 'Rendering final video...',
       status: 'waiting'
@@ -79,7 +79,13 @@ export function useVideoGeneration() {
     setGenerationSteps(steps => 
       steps.map(step => 
         step.id === stepId 
-          ? { ...step, status, ...(error ? { error } : {}) }
+          ? { 
+              ...step, 
+              status, 
+              ...(error ? { error } : {}),
+              // Preserve progress value when updating status
+              progress: step.progress
+            }
           : step
       )
     );
@@ -455,9 +461,9 @@ export function useVideoGeneration() {
           
           // Set up the next fallback
           if (nextStep === 'transcription') {
-            setupStepFallback('transcription', 'video', 60000); // 1 minute for transcription
-          } else if (nextStep === 'video') {
-            setupStepFallback('video', 'complete', 180000); // 3 minutes for video generation
+            setupStepFallback('transcription', 'video_generation', 60000); // 1 minute for transcription
+          } else if (nextStep === 'video_generation') {
+            setupStepFallback('video_generation', 'complete', 180000); // 3 minutes for video generation
           }
         }
       }, timeoutMs);
@@ -547,6 +553,31 @@ export function useVideoGeneration() {
             // Parse the JSON directly without expecting data: prefix
             const data = JSON.parse(update);
             
+            // Handle step progress updates
+            if (data.type === 'step_progress' && data.stepId) {
+              console.log(`Received step progress update for ${data.stepId}: ${data.progress}%`);
+              
+              // Add additional debugging for video generation progress
+              if (data.stepId === 'video_generation') {
+                console.log(`Updating video generation progress: ${data.progress}%`);
+              }
+              
+              setGenerationSteps(steps => {
+                const updatedSteps = steps.map(step =>
+                  step.id === data.stepId
+                    ? { ...step, status: 'processing', progress: data.progress }
+                    : step
+                );
+                
+                // Log the updated step for debugging
+                const updatedStep = updatedSteps.find(s => s.id === data.stepId);
+                console.log(`Updated step ${data.stepId}:`, updatedStep);
+                
+                return updatedSteps;
+              });
+              continue; // Skip the rest of the status_update logic for this message
+            }
+
             // Only process status_update type messages
             if (data.type !== 'status_update') {
               console.log('Received non-status update:', data);
@@ -572,26 +603,26 @@ export function useVideoGeneration() {
                 if (stepTimeouts['audio']) {
                   clearTimeout(stepTimeouts['audio']);
                 }
-                setupStepFallback('transcription', 'video', 60000);
+                setupStepFallback('transcription', 'video_generation', 60000);
                 break;
               
               case 'transcription_processing':
                 updateStepStatus('transcription', 'processing');
                 currentStep = 'transcription';
                 // Reset the fallback timer
-                setupStepFallback('transcription', 'video', 60000);
+                setupStepFallback('transcription', 'video_generation', 60000);
                 break;
               
               case 'transcription_complete':
                 console.log('Transcription completed');
                 updateStepStatus('transcription', 'completed');
-                updateStepStatus('video', 'processing');
-                currentStep = 'video';
+                updateStepStatus('video_generation', 'processing');
+                currentStep = 'video_generation';
                 // Clear transcription timeout and set up video fallback
                 if (stepTimeouts['transcription']) {
                   clearTimeout(stepTimeouts['transcription']);
                 }
-                setupStepFallback('video', 'complete', 180000);
+                setupStepFallback('video_generation', 'complete', 180000);
                 break;
               
               case 'background_processing':
@@ -601,17 +632,30 @@ export function useVideoGeneration() {
               case 'background_complete':
                 console.log('Background generation completed');
                 updateStepStatus('background', 'completed');
-                updateStepStatus('video', 'processing');
+                updateStepStatus('video_generation', 'processing');
                 break;
               
               case 'video_processing':
-                updateStepStatus('video', 'processing');
+                // Update the status to processing but also update progress if available
+                if (data.progress !== undefined) {
+                  console.log(`Received video progress update: ${data.progress}%`);
+                  setGenerationSteps(steps =>
+                    steps.map(step =>
+                      step.id === 'video_generation'
+                        ? { ...step, status: 'processing', progress: data.progress }
+                        : step
+                    )
+                  );
+                } else {
+                  // Just update status without touching progress
+                  updateStepStatus('video_generation', 'processing');
+                }
                 break;
               
               case 'video_complete':
                 console.log('Video generation completed');
                 console.log('Multi-channel mode status:', isMultiChannelModeParam);
-                updateStepStatus('video', 'completed');
+                updateStepStatus('video_generation', 'completed');
                 
                 // Clear all timeouts
                 Object.keys(stepTimeouts).forEach(key => {
