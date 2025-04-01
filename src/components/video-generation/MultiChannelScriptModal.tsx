@@ -22,8 +22,7 @@ const OPENROUTER_MODELS = [
   { id: "anthropic/claude-3.7-sonnet:beta", name: "Claude 3.7 Sonnet" },
   { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1" },
   { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek Chat V3" },
-  { id: "google/gemini-2.0-flash-001", name: "Gemini Flash 2.0" },
-  { id: "google/gemini-2.0-pro-exp-02-05:free", name: "Gemini Pro 2.0" },
+  { id: "google/gemini-2.5-pro-exp-03-25:free", name: "Gemini Pro 2.5" },
   { id: "openai/gpt-4o-2024-11-20", name: "ChatGPT 4o (2024-11-20)" },
   { id: "openai/chatgpt-4o-latest", name: "ChatGPT 4o" },
 ];
