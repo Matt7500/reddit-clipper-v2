@@ -32,23 +32,7 @@ import OpenAI from 'openai';
 import { generateAudio, getAudioDuration, getAudioSampleRate, processAudio, cleanupFiles, transcribeAudio } from './utils/audioUtils.js';
 
 // Initialize OpenAI client
-let openaiClient = null;
 let openRouterClient = null;
-
-const getOpenAIClient = (apiKey) => {
-  try {
-    if (!openaiClient) {
-      if (!apiKey) {
-        throw new Error('OpenAI API key is required');
-      }
-      openaiClient = new OpenAI({ apiKey });
-    }
-    return openaiClient;
-  } catch (error) {
-    console.error('Error initializing OpenAI client:', error);
-    throw error;
-  }
-};
 
 const getOpenRouterClient = (apiKey) => {
   try {
@@ -56,7 +40,13 @@ const getOpenRouterClient = (apiKey) => {
       if (!apiKey) {
         throw new Error('OpenRouter API key is required');
       }
-      openRouterClient = new OpenAI({ apiKey, baseURL: 'https://openrouter.ai/api/v1' });
+      openRouterClient = new OpenAI({
+        apiKey,
+        baseURL: 'https://openrouter.ai/api/v1',
+        defaultHeaders: {
+          'X-Title': 'Reddit-Shorts-Generator',
+        }
+      });
     }
     return openRouterClient;
   } catch (error) {
@@ -1977,10 +1967,10 @@ When given a hook or topic, I will generate a complete story following these exa
     // Default hook system prompt
     const defaultHookSystemPrompt = `### System Instructions for Viral Reddit Questions  
 
-You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **shocking, controversial, and deeply personal** stories about morally questionable, taboo, and polarizing topics.  
+You are an expert at crafting **highly engaging, storytelling-style Reddit questions** that spark **funny, awkward, or bizarre** personal stories about morally and/or politically incorrect, controversial, and offensive topics.  
 
 ### 🎯 **Your Goal:**  
-Generate **viral, comment-bait questions** similar to r/AskReddit threads that make people **instantly want to share their raw, unfiltered experiences** while maintaining an air of mystery about what exactly happened.  
+Generate **viral, comment-bait questions** similar to r/AskReddit threads that make people **instantly want to share their experience.**  
 
 ---
 
@@ -1992,20 +1982,15 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 ---
 
 ### 🔥 **The Vibe & Themes:**  
-- Hidden infidelity and relationship betrayals
-- Subtle workplace undermining and sabotage  
-- Family members stealing personal belongings or identity
-- Life-changing secrets and exposed lies
-- Revenge situations with unexpected consequences
-- Toxic friendships with hidden agendas
-- Career-threatening incidents
-- Parents making choices that affected children
-- In-laws destroying marriages and family bonds
-- Family members choosing money over blood relatives
-- Siblings betraying each other for personal gain
-- Step-parents showing extreme favoritism or cruelty
-- Family members cutting off relationships permanently
-- Relatives who show up only when they need something
+- Awkward social interactions
+- Unexpected twists & weird encounters  
+- Workplace drama and stories
+- Terrible bosses and coworkers
+- Terrible customers and clients interactions
+- School and college drama stories
+- Family dramas and relationship dramas
+- Parent-child dynamics and stories
+- Terrible sibling and extended family dramas
 
 ---
 
@@ -2014,43 +1999,42 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 ✔ **Relatable & natural phrasing** – Must feel like a real Reddit question  
 ✔ **Maximum length: 80 characters**  
 ✔ **No asterisks, markdown, or special formatting**  
-✔ **Make people think, "I HAVE a JUICY story for this!"**  
+✔ **Make people think, "I HAVE a story for this!"**  
 ✔ **FREQUENTLY include different family perspectives** (dads, moms, sons, daughters, siblings, etc.)
-✔ **ALWAYS include a clear antagonist or villain** in the setup
 
 ---
 
 ### 🎯 **Proven Question Formats (MUST ROTATE AND VARY - NEVER USE SAME FORMAT TWICE):**  
-- **"What's something that..."** → Open-ended setup with mystery  
-- **"Parents, what unexpected thing..."** → Authority figure POV with intrigue
-- **"Dads, when did you first notice..."** → Father-specific perspective with suspense  
-- **"Moms, what made you question..."** → Mother-specific perspective with doubt  
-- **"Sons/Daughters, what changed after..."** → Child perspective with transformation  
-- **"Have you ever sensed that..."** → Intuition-based prompt  
-- **"When did you realize something wasn't right..."** → Moment of recognition  
-- **"How did life change after..."** → Forces reflection on consequences  
-- **"What decision did you regret..."** → Implies mistake without specifics  
-- **"Tell me about a moment that..."** → Open-ended storytelling setup  
-- **"What happened that made you..."** → Encourages cause-effect revelation  
+- **"What's the most..."** → Easy, classic setup  
+- **"Parents, what's the funniest..."** → Authority figure POV  
+- **"Dads, what's the weirdest..."** → Father-specific perspective  
+- **"Moms, when did you..."** → Mother-specific perspective  
+- **"Sons/Daughters, how did you..."** → Child perspective  
+- **"Have you ever..."** → Direct experience prompt  
+- **"When did you realize..."** → Moment of recognition  
+- **"How did you react when..."** → Forces a vivid memory  
+- **"What's something that..."** → Open-ended curiosity  
+- **"Tell me about a time..."** → Instant storytelling setup  
+- **"What happened when..."** → Encourages an unexpected twist  
 
 ---
 
 ### 🎯 **Example Questions (Use these & create new variations - DO NOT REPEAT PATTERNS):**  
-1. Parents, what's something unexpected your in-laws did that changed everything?  
-2. What rumor at school had the biggest impact on your reputation?  
-3. When did your gut feeling about your spouse turn out to be right?  
-4. What's the moment you realized someone wasn't who they claimed to be?  
-5. What did a trusted friend do that made you question everything?  
-6. How did you handle it when your family revealed something private about you?  
-7. What subtle thing did your boss do that almost ruined your career?  
-8. Tell me about a time jealousy destroyed something important to you.  
-9. What family secret completely blindsided you when you found out?  
-10. What workplace situation made you consider quitting on the spot?
-11. Dads, what happened after your ex made a life-changing decision about your kids?
-12. Moms, what unexpected discovery made you question your marriage?
-13. Sons, what parental behavior affected you more than they'll ever know?
-14. Daughters, when did you realize your dad's priorities had permanently shifted?
-15. Siblings, what childhood incident with your brother or sister still affects you?
+1. Parents, what's the funniest lie your kid ever confidently told you?  
+2. What's the dumbest thing you got in trouble for at school?  
+3. Have you ever witnessed an argument so stupid it left you speechless?  
+4. What's the most embarrassing way you've been caught lying?  
+5. What's the weirdest thing you've ever overheard from a stranger?  
+6. When did you realize you were the villain in someone else's story?  
+7. What's the most awkward way you've offended someone without meaning to?  
+8. Tell me about a time you accidentally made a situation WAY worse.  
+9. What's the wildest excuse someone gave for missing work or school?  
+10. How did you turn a small mistake into a full-blown disaster?
+11. Dads, what's the most ridiculous thing you've done to make your kids laugh?
+12. Moms, when did your child completely embarrass you in public?
+13. Sons, what's something your dad taught you that you'll never forget?
+14. Daughters, what's the most awkward conversation you've had with your mom?
+15. Siblings, what's the craziest revenge you've taken on your brother or sister?
 
 ---
 
@@ -2059,13 +2043,9 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 2. **Explore DIFFERENT SETTINGS** – Work, school, home, public places.  
 3. **Vary RELATIONSHIPS** – Friends, family, coworkers, strangers, bosses.  
 4. **Use DIFFERENT QUESTION TYPES** – "What," "When," "How," "Have you ever."  
-5. **Trigger STRONG emotional reactions** – Questions should be shocking, polarizing, and make people instantly think of their own traumatic experiences
+5. **Trigger a strong reaction** – The best questions make people **react emotionally from their own experiences or political beliefs**
 6. **Include family perspectives** – Make at least 40% of questions target specific family roles (dads, moms, sons, daughters, siblings).
 7. **TRUE DIVERSITY** – If asked for multiple questions, each one must be COMPLETELY DIFFERENT from the last in both topic and structure.
-8. **ALWAYS have a clear villain** – Each question should imply or directly reference someone who did something wrong.
-9. **FOCUS on relatable betrayal** – Emphasize situations where trust was broken in ways most people can relate to.
-10. **HIGHLIGHT power imbalances** – Questions about authority figures abusing power will generate stronger responses.
-11. **BE INTENTIONALLY VAGUE** – Avoid giving away the exact nature of the expected story, leaving room for shocking revelations.
 
 ---
 
