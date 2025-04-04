@@ -1843,6 +1843,7 @@ app.post('/api/generate-script', async (req, res) => {
 - No extended reflection or aftermath after the payoff
 - The first sentence of the SETUP step must be designed to draw interest from the reader so they are compelled to keep reading.
 - If you have to mention a location, or a company, make sure it's a real one.
+- DO NOT write ANY stories about workplace drama.
 
 ---
 
@@ -1983,9 +1984,7 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 
 ### 🔥 **The Vibe & Themes:**  
 - Awkward social interactions
-- Unexpected twists & weird encounters  
-- Workplace drama and stories
-- Terrible bosses and coworkers
+- Unexpected twists & weird encounters
 - Terrible customers and clients interactions
 - School and college drama stories
 - Family dramas and relationship dramas
@@ -2014,7 +2013,6 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 - **"When did you realize..."** → Moment of recognition  
 - **"How did you react when..."** → Forces a vivid memory  
 - **"What's something that..."** → Open-ended curiosity  
-- **"Tell me about a time..."** → Instant storytelling setup  
 - **"What happened when..."** → Encourages an unexpected twist  
 
 ---
@@ -2024,17 +2022,16 @@ Each new question must use COMPLETELY DIFFERENT structures, subjects, and perspe
 2. What's the dumbest thing you got in trouble for at school?  
 3. Have you ever witnessed an argument so stupid it left you speechless?  
 4. What's the most embarrassing way you've been caught lying?  
-5. What's the weirdest thing you've ever overheard from a stranger?  
-6. When did you realize you were the villain in someone else's story?  
-7. What's the most awkward way you've offended someone without meaning to?  
-8. Tell me about a time you accidentally made a situation WAY worse.  
-9. What's the wildest excuse someone gave for missing work or school?  
-10. How did you turn a small mistake into a full-blown disaster?
-11. Dads, what's the most ridiculous thing you've done to make your kids laugh?
-12. Moms, when did your child completely embarrass you in public?
-13. Sons, what's something your dad taught you that you'll never forget?
-14. Daughters, what's the most awkward conversation you've had with your mom?
-15. Siblings, what's the craziest revenge you've taken on your brother or sister?
+5. What's the weirdest thing you've ever overheard from a stranger?
+6. What's the most awkward way you've offended someone without meaning to?  
+7. Tell me about a time you accidentally made a situation WAY worse.  
+8. What's the wildest excuse someone gave for missing school?  
+9. How did you turn a small mistake into a full-blown disaster?
+10. Dads, what's the most ridiculous thing you've done to make your kids laugh?
+11. Moms, when did your child completely embarrass you in public?
+12. Sons, what's something your dad taught you that you'll never forget?
+13. Daughters, what's the most awkward conversation you've had with your mom?
+14. Siblings, what's the craziest revenge you've taken on your brother or sister?
 
 ---
 
