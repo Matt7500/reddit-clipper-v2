@@ -101,7 +101,7 @@ export function MultiChannelScriptModal({
   const [generatingScriptFromHook, setGeneratingScriptFromHook] = useState<string | null>(null);
   const [generatingHook, setGeneratingHook] = useState<string | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
-  const [generationStep, setGenerationStep] = useState<'initializing' | 'generating_hook' | 'generating_script' | 'finalizing'>('initializing');
+  const [generationStep, setGenerationStep] = useState<'initializing' | 'generating_hook' | 'generating_script' | 'refining' | 'finalizing'>('initializing');
   const [isClosing, setIsClosing] = useState(false);
   
   // New state for model selection
@@ -361,67 +361,133 @@ export function MultiChannelScriptModal({
     setGeneratingSingleChannel(channelId);
     setGenerationProgress(0);
     setGenerationStep('initializing');
+
+    // --- Use EventSource for SSE ---
+    const eventSourceUrl = '/api/generate-script'; 
     
+    // Create the POST body
+    const body = JSON.stringify({
+      openaiApiKey: settings.openaiApiKey,
+      openrouterApiKey: settings.openrouterApiKey,
+      openrouterModel: scriptModel,
+      customHook: currentHook,
+      userId: user?.id,
+    });
+
+    // Since EventSource doesn't directly support POST, we'll use fetch to initiate
+    // the request but handle the response as a stream.
+    // This is a common workaround.
     try {
-      // Start progress animation
-      setTimeout(() => {
-        setGenerationStep('generating_script');
-        setGenerationProgress(30);
-      }, 300);
-      
-      // Make API call to generate script based on the hook
-      const response = await fetch('/api/generate-script', {
+      const response = await fetch(eventSourceUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream' // Important: Indicate we expect a stream
         },
-        body: JSON.stringify({
-          openaiApiKey: settings.openaiApiKey,
-          openrouterApiKey: settings.openrouterApiKey,
-          openrouterModel: scriptModel,
-          customHook: currentHook,
-          userId: user?.id, // Pass the user ID to use custom prompts
-        }),
+        body: body,
       });
-      
-      // Update progress
-      setGenerationProgress(70);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate script');
+
+      if (!response.ok || !response.body) {
+        const errorData = response.headers.get('content-type')?.includes('application/json') 
+          ? await response.json() 
+          : { error: `Request failed with status ${response.status}` };
+        throw new Error(errorData.error || 'Failed to establish stream connection');
       }
-      
-      // Get response data
-      const data = await response.json();
-      
-      // Final progress step
-      setGenerationStep('finalizing');
-      setGenerationProgress(90);
-      
-      if (data.success) {
-        // Short delay to show the finalizing step
-        setTimeout(() => {
-          // Update the script, keeping the original hook
-          handleScriptChange(channelId, data.script);
-          
-          // Complete the progress
-          setGenerationProgress(100);
-          
-          // Reset after a short delay
-          setTimeout(() => {
-            setGeneratingSingleChannel(null);
-            setGenerationProgress(0);
-            setGenerationStep('initializing');
-          }, 500);
-        }, 500);
-      } else {
-        throw new Error(data.error || 'Failed to generate script');
-      }
+
+      // Process the stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processStream = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log('Stream finished.');
+            // Check if generation was successful before resetting
+            const finalState = generationStep;
+            if (finalState !== 'finalizing') { // Ensure completion message was received
+              console.warn('Stream ended unexpectedly before completion event.');
+              // Optionally handle this as an error or incomplete state
+            }
+            break; // Exit the loop
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || ''; // Keep the last partial message
+
+          for (const lineBlock of lines) {
+            if (!lineBlock.trim()) continue;
+
+            let event = 'message'; // Default event type
+            let dataStr = '';
+            const eventMatch = lineBlock.match(/^event: (.*)$/m);
+            if (eventMatch) {
+              event = eventMatch[1].trim();
+            }
+            const dataMatch = lineBlock.match(/^data: (.*)$/m);
+            if (dataMatch) {
+              dataStr = dataMatch[1].trim();
+            }
+
+            if (!dataStr) continue; // Skip if no data
+
+            try {
+              const parsedData = JSON.parse(dataStr);
+              console.log('Received SSE:', { event, parsedData });
+
+              if (event === 'status') {
+                setGenerationStep(parsedData.step);
+                setGenerationProgress(parsedData.progress);
+              } else if (event === 'data') {
+                // Final success data
+                setGenerationStep('finalizing');
+                setGenerationProgress(100);
+
+                // Short delay to show 100%
+                setTimeout(() => {
+                  handleScriptChange(channelId, parsedData.script); // Update script state
+                  // Reset state after completion
+                  setTimeout(() => {
+                    setGeneratingSingleChannel(null);
+                    setGenerationProgress(0);
+                    setGenerationStep('initializing');
+                  }, 500); // Delay before resetting
+                }, 300); // Delay to show 100%
+                
+                reader.cancel(); // Close the stream reader as we are done
+                return; // Exit processing loop
+
+              } else if (event === 'error') {
+                // Handle error from backend
+                console.error('SSE Error Event:', parsedData.message);
+                toast({
+                  title: "Error generating script",
+                  description: parsedData.message || "An error occurred during generation.",
+                  variant: "destructive",
+                  duration: 5000,
+                });
+                reader.cancel(); // Close the stream on error
+                setGeneratingSingleChannel(null);
+                setGenerationProgress(0);
+                setGenerationStep('initializing');
+                return; // Exit processing loop
+              }
+            } catch (parseError) {
+              console.error('Error parsing SSE data:', parseError, 'Raw data:', dataStr);
+            }
+          }
+        }
+      };
+
+      await processStream();
+
     } catch (error) {
+      console.error('Error during SSE fetch/processing:', error);
       toast({
         title: "Error generating script",
-        description: error instanceof Error ? error.message : "Something went wrong while generating the script",
+        description: error instanceof Error ? error.message : "Something went wrong while processing the script generation.",
         variant: "destructive",
         duration: 5000,
       });
@@ -872,6 +938,7 @@ export function MultiChannelScriptModal({
                               {generationStep === 'initializing' && 'Initializing...'}
                               {generationStep === 'generating_hook' && generationType === 'hook' && 'Generating hook...'}
                               {generationStep === 'generating_script' && generationType === 'script' && 'Generating script...'}
+                              {generationStep === 'refining' && generationType === 'script' && 'Refining script...'}
                               {generationStep === 'finalizing' && 'Finalizing content...'}
                             </span>
                             <span className="text-xs font-medium">{Math.round(generationProgress)}%</span>

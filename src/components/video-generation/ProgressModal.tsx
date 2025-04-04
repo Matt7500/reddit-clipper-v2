@@ -148,9 +148,9 @@ export function ProgressModal({
                       </div>
                     )}
                     {step.status === 'processing' && typeof step.progress === 'number' && (
-                      <div className="mt-2">
-                        <Progress value={step.progress} className="h-1 bg-[#3A3A3A]" indicatorClassName="bg-primary" />
-                        <p className="text-xs text-primary text-right mt-1">{step.progress}%</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Progress value={step.progress} className="h-1 flex-grow bg-[#3A3A3A]" indicatorClassName="bg-primary" />
+                        <p className="text-xs text-primary font-medium w-10 text-right">{step.progress}%</p>
                       </div>
                     )}
                   </div>

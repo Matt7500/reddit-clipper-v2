@@ -2156,7 +2156,22 @@ A **single, engaging question** that makes people want to share their story.
     else if (customHook && customHook.trim() !== '') {
       console.log(`Generating script from provided hook: ${customHook}`);
 
+      // --- SSE Setup ---
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders(); // Flush headers to establish SSE connection
+
+      const sendEvent = (event, data) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
       try {
+        // 1. Send initial generating status
+        sendEvent('status', { step: 'generating_script', progress: 30 });
+
+        // 2. Generate initial script
         const storyCompletion = await openrouterClient.chat.completions.create({
           model: openrouterModel || "anthropic/claude-3.7-sonnet", // Use provided model or default
           messages: [
@@ -2170,40 +2185,210 @@ A **single, engaging question** that makes people want to share their story.
             }
           ],
           temperature: 0.7,
-          max_tokens: 2000 // Explicitly set max tokens for script generation
+          max_tokens: 2000
         });
 
-        // Add defensive check for API response structure
         if (!storyCompletion || !storyCompletion.choices || !storyCompletion.choices[0] || 
             !storyCompletion.choices[0].message || !storyCompletion.choices[0].message.content) {
-          console.error('Invalid API response structure:', JSON.stringify(storyCompletion));
-          throw new Error('Failed to generate script: Invalid API response structure');
+          throw new Error('Failed to generate script: Invalid API response structure from initial generation');
         }
 
         const claudeResponse = storyCompletion.choices[0].message.content;
-
-        // Check if the response contains both Hook and Story sections
-        const scriptCompletion = claudeResponse.match(/Story:\s*\n(.*?)$/s);
-        
-        // If the response doesn't have proper formatting, extract just the story part
-        let script;
-        if (!scriptCompletion) {
-          // If there's no proper formatting, use the entire response as the script
-          script = claudeResponse.trim();
+        const scriptMatch = claudeResponse.match(/Story:\s*\n(.*?)$/s);
+        let initialScript;
+        if (!scriptMatch) {
+          console.warn('Could not find "Story:" prefix, using entire response as initial script.');
+          initialScript = claudeResponse.trim();
         } else {
-          script = scriptCompletion[1].trim();
+          initialScript = scriptMatch[1].trim();
         }
 
-        // Return the original hook and generated script
-        res.json({
+        console.log('Initial script generated. Now refining...');
+
+        // 3. Send refining status
+        sendEvent('status', { step: 'refining', progress: 70 });
+
+        // --- Refinement Step ---
+        let refinedScript = initialScript; // Default to initial script if refinement fails
+        const refinementPrompt = `You are a humor enhancement specialist and script refiner. Your task is to subtly elevate the given story's humor with minimal, strategic interventions and remove any AI sounding words or phrases.
+
+### Core Objectives:
+1. Preserve 100% of the original story's structure and events.
+2. Enhance humor through precise, surgical language modifications that **feel natural** and **authentic**.
+3. Maintain the original narrative voice and perspective of the protagonist.
+4. **Eliminate any AI-like word choices**, awkward phrasing, or overly formal tones that could make the story sound robotic.
+5. Adjust any real names in the script to be more diverse and less stereotypical where applicable.
+6. **CRITICAL: Word Count Must Be 300-330 words EXACTLY** - no exceptions.
+7. **CRITICAL: Validate and enforce climax timing** - ensure the real payoff is saved for the final 10%.
+
+### WORD COUNT VALIDATION - CRITICAL
+- Count EVERY word in the final story
+- Include ALL words (dialogue, interjections, everything)
+- If outside 300-330 range, adjust while maintaining:
+  * Story quality
+  * Humor
+  * Proper pacing
+  * Climax timing
+- Verify count before finalizing
+- Reject if outside range
+
+### CLIMAX TIMING VALIDATION - CRITICAL
+1. **Analyze Story Structure:**
+   - Verify no major revelations occur before 90% mark
+   - Check for premature tension resolution
+   - Identify and remove any early climactic elements
+
+2. **False Peak Verification:**
+   - Ensure misdirection is properly placed (around 75-85% mark)
+   - Validate that false leads don't reveal true ending
+   - Check that tension builds naturally to final reveal
+
+3. **True Climax Placement:**
+   - Confirm main revelation occurs in final 10%
+   - Verify payoff is properly delayed
+   - Ensure ending is abrupt and satisfying
+
+### STRICTLY PROHIBITED PHRASES, WORDS, AND PATTERNS:
+- "Bless ___ heart", "bless her soul" or any variations
+- "The works" as a catch-all phrase
+- "Okay, so picture this", "here's the deal" or any variations
+- "started innocently enough" or any variations.
+- Overused Southern expressions
+- Repetitive narrative clichés
+- Stock phrases that feel artificial
+- Formulaic internet story patterns
+- Overused Reddit story tropes
+- Any phrases that telegraph the ending too early
+
+## STORY STRUCTURE ENFORCEMENT
+1. **Opening Hook (First 5%):**
+   - Verify hook is engaging without revealing too much
+   - Check for proper scene setting
+
+2. **Setup Phase (Next 20%):**
+   - Validate character introductions
+   - Ensure no premature reveals
+
+3. **Progressive Tension (Middle 40%):**
+   - Check for proper tension escalation
+   - Verify conflict deepening
+   - Ensure stakes are rising naturally
+
+4. **False Peak (Next 25%):**
+   - Validate misdirection effectiveness
+   - Check red herring placement
+   - Ensure reader expectation management
+
+5. **True Climax (Final 10% ONLY):**
+   - Verify main revelation timing
+   - Ensure proper payoff delivery
+   - Check for abrupt, satisfying ending
+
+### Humor Enhancement Strategy:
+- Modify up to 5 lines for humor injection while preserving original meaning
+- Focus on unexpected, dry comparisons
+- Use sarcastic, understated commentary
+- Prioritize subtle wit over forced jokes
+- Create fresh, original comparisons instead of relying on common expressions
+
+### Humor Injection Guidelines:
+- Replace basic descriptions with sharper, more sardonic language
+- Use hyperbolic but precise comparisons that feel fresh and original
+- Aim for economy of words
+- Maintain the story's original tone and intent
+- Avoid recycling common internet humor patterns
+
+### Prohibited Approaches:
+- No internet slang overload
+- Avoid dated references
+- No jokes that punch down
+- No complete rewriting of sentences
+- No recycling of common Reddit story phrases
+- No reliance on regional dialect clichés
+- No overused meme-like expressions
+- NO early revelation of story climax
+- NO premature tension resolution
+
+### Successful Humor Example:
+Basic: "He was very confident despite being incompetent"
+Enhanced: "He had the confidence of a rocket scientist and the skills of a potato"
+
+Your goal: Elevate the humor with minimal, precise linguistic tweaks that feel natural and unforced while ensuring proper story structure and climax timing.
+
+**PERFECT HUMOR AND STORY FLOW EXAMPLE, the story should flow and end abruptly like this:**  
+**Question: What's the dumbest way a teacher thought they were the victim?**  
+What's the dumbest way a teacher thought they were the victim? 
+I had a teacher who had no clue how to grade papers properly. It was like she was making it up as she went. Even on multiple choice tests. I could write the most groundbreaking, well researched, beautiful essay— and I'd get a D. 
+Why? "I didn't like the topic." Oh, my bad. Let me just mind read your personal preferences before turning in my work. And it wasn't just me. She did this to everyone. One of my friends? Smartest guy I knew. 
+Straight A's in every other class. but he got an F in her class. At first, we thought maybe she was just strict. Nope. She was just terrible. It got so bad that we had no choice but to tell our parents. 
+And once they found out how unfair her grading was? They all called the school. The next day, she walked in looking like she had just survived a war. Slammed her bag on the desk. And immediately started ranting. 
+"Calling your parents isn't going to fix your terrible grades!" "Maybe instead of whining, you should try working harder." Oh, my bad, let me just grind my soul away so you can give your opinion on my answers instead of actually grading them. 
+And then she said the craziest thing. "You're all just targeting me." WHAT. MA'AM. WE'RE ONLY DOING THIS BECAUSE YOU APPARENTLY DON'T KNOW HOW TO GRADE A PAPER. She went on a full meltdown. Ranting for the entire class. Pacing bac and forth. 
+Defending herself. Calling herself an "amazing teacher." And when my friend in the back laughed at that? She gave him detention. For laughing. At her own bad teaching. That was the final straw. We told our paents again. 
+And this time, they didn't just complain. They went nuclear. Like 50 different parents called the school. And after one week? She was gone. Fired. Never to be seen again. And for the first time ever? I actually had an A
+---
+`;
+
+        try {
+          // 4. Refine the script
+          const refinementCompletion = await openrouterClient.chat.completions.create({
+            model: openrouterModel || "anthropic/claude-3.7-sonnet", // Use same model for refinement
+            messages: [
+              { role: "system", content: refinementPrompt },
+              { role: "user", content: initialScript }
+            ],
+            temperature: 0.7, 
+            max_tokens: 1000
+          });
+
+          if (refinementCompletion && refinementCompletion.choices && refinementCompletion.choices[0] &&
+              refinementCompletion.choices[0].message && refinementCompletion.choices[0].message.content) {
+            
+            let tempRefinedScript = refinementCompletion.choices[0].message.content.trim();
+            tempRefinedScript = tempRefinedScript.replace(/^Hook:\s*\n?/i, '');
+            tempRefinedScript = tempRefinedScript.replace(/^Story:\s*\n?/i, '');
+            
+            const wordCount = tempRefinedScript.split(/\s+/).filter(Boolean).length;
+            console.log(`Refined script word count: ${wordCount}`);
+            if (wordCount >= 300 && wordCount <= 330) {
+              refinedScript = tempRefinedScript;
+              console.log('Refinement successful and within word count.');
+            } else {
+              console.warn(`Refined script word count (${wordCount}) is outside the target range (300-330). Using refined script anyway.`);
+              refinedScript = tempRefinedScript; 
+            }
+          } else {
+            console.warn('Refinement API call succeeded but response structure was invalid. Using initial script.');
+          }
+        } catch (refinementError) {
+          console.error('OpenRouter API Error (refinement):', refinementError);
+          console.warn('Using initial script due to refinement error.');
+          // Optionally send an error back to the client about refinement failure
+          // sendEvent('error', { message: 'Refinement failed, using initial script.' });
+        }
+        // --- End Refinement Step ---
+
+        // 5. Send final data
+        sendEvent('data', { 
           success: true,
           hook: customHook,
-          script: cleanText(script)
+          script: cleanText(refinedScript) // Clean the final script
         });
-        return;
+
       } catch (apiError) {
-        console.error('OpenRouter API Error (script generation):', apiError);
-        throw new Error('Failed to generate script from hook: ' + (apiError.error?.message || apiError.message));
+        console.error('Error during script generation/refinement process:', apiError);
+        // Send error event to client
+        try {
+          sendEvent('error', { 
+            success: false, 
+            message: 'Failed to generate script: ' + (apiError.error?.message || apiError.message)
+          });
+        } catch (sendError) {
+          console.error("Failed to send error event to client:", sendError);
+        }
+      } finally {
+        // 6. Close the connection
+        res.end();
       }
     }
     
