@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, User, Palette, Music } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -489,6 +490,28 @@ export const EditProfileDialog = ({
                       }
                     />
                   </div>
+                  
+                  {editingProfile.has_background_music && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm text-white">Music Volume</label>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round((editingProfile.background_music_volume || 0.015) * 100)}%
+                        </span>
+                      </div>
+                      <Slider 
+                        defaultValue={[(editingProfile.background_music_volume || 0.015) * 100]}
+                        max={100}
+                        step={1}
+                        onValueChange={(value) => {
+                          onEditingProfileChange({ 
+                            ...editingProfile, 
+                            background_music_volume: value[0] / 100 
+                          });
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>

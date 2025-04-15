@@ -46,6 +46,7 @@ interface Props {
   backgroundVideoPath: string[] | VideoInfo[] | string;
   has_background_music?: boolean;
   backgroundMusicUrl?: string;
+  background_music_volume?: number;
   
   // Asset URLs for HookVideo
   assetUrls?: {
@@ -86,6 +87,7 @@ export const MainComposition: React.FC<Props> = ({
   backgroundVideoPath,
   has_background_music = false,
   backgroundMusicUrl = "",
+  background_music_volume = 0.015,
   
   // Asset URLs
   assetUrls = {},
@@ -120,7 +122,7 @@ export const MainComposition: React.FC<Props> = ({
       {has_background_music && (
         <Audio 
           src={backgroundMusic} 
-          volume={0.015}
+          volume={background_music_volume}
           loop
         />
       )}

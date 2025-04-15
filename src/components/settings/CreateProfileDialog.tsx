@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, User, Palette, Music } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -20,6 +21,7 @@ interface CreateProfileDialogProps {
     voice_id?: string;
     style: StyleOption;
     has_background_music: boolean;
+    background_music_volume?: number;
     background_video_type: BackgroundVideoType;
     hook_animation_type: HookAnimationType;
     target_duration: number;
@@ -53,6 +55,7 @@ export const CreateProfileDialog = ({
   const [newProfileBackgroundVideoType, setNewProfileBackgroundVideoType] = useState<BackgroundVideoType>('gameplay');
   const [newProfileHookAnimationType, setNewProfileHookAnimationType] = useState<HookAnimationType>('fall');
   const [newProfileBackgroundMusic, setNewProfileBackgroundMusic] = useState(false);
+  const [newProfileBackgroundMusicVolume, setNewProfileBackgroundMusicVolume] = useState<number>(0.015);
   const [newProfileTargetDuration, setNewProfileTargetDuration] = useState<number>(60);
   const [newProfileSubtitleSize, setNewProfileSubtitleSize] = useState<number>(64);
   const [newProfileStrokeSize, setNewProfileStrokeSize] = useState<number>(8);
@@ -76,6 +79,7 @@ export const CreateProfileDialog = ({
       setNewProfileBackgroundVideoType('gameplay');
       setNewProfileHookAnimationType('fall');
       setNewProfileBackgroundMusic(false);
+      setNewProfileBackgroundMusicVolume(0.015);
       setNewProfileTargetDuration(60);
       setNewProfileSubtitleSize(64);
       setNewProfileStrokeSize(8);
@@ -107,6 +111,7 @@ export const CreateProfileDialog = ({
       background_video_type: newProfileBackgroundVideoType,
       hook_animation_type: newProfileHookAnimationType,
       has_background_music: newProfileBackgroundMusic,
+      background_music_volume: newProfileBackgroundMusicVolume,
       target_duration: newProfileTargetDuration,
       subtitle_size: newProfileSubtitleSize,
       stroke_size: newProfileStrokeSize,
@@ -122,6 +127,7 @@ export const CreateProfileDialog = ({
     setNewProfileBackgroundVideoType('gameplay');
     setNewProfileHookAnimationType('fall');
     setNewProfileBackgroundMusic(false);
+    setNewProfileBackgroundMusicVolume(0.015);
     setNewProfileTargetDuration(60);
     setNewProfileSubtitleSize(64);
     setNewProfileStrokeSize(8);
@@ -508,6 +514,25 @@ export const CreateProfileDialog = ({
                       onCheckedChange={setNewProfileBackgroundMusic}
                     />
                   </div>
+                  
+                  {newProfileBackgroundMusic && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm text-white">Music Volume</label>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round(newProfileBackgroundMusicVolume * 100)}%
+                        </span>
+                      </div>
+                      <Slider 
+                        defaultValue={[newProfileBackgroundMusicVolume * 100]}
+                        max={100}
+                        step={1}
+                        onValueChange={(value) => {
+                          setNewProfileBackgroundMusicVolume(value[0] / 100);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>
