@@ -98,6 +98,89 @@ export async function cleanupFiles(files) {
 }
 
 /**
+ * Removes silence from the entire audio file using FFmpeg's silenceremove filter.
+ * @param {string} inputFile - Path to input audio file
+ * @param {string} outputFile - Path to output audio file
+ * @param {number} silenceThresholdDb - Silence threshold in dB (default: -30.0)
+ * @param {Object} options - Additional options for silence removal
+ * @returns {Promise<boolean>} - Returns true if successful, false otherwise
+ */
+export async function removeSilence(inputFile, outputFile, silenceThresholdDb = -35.0, options = {}) {
+  try {
+    // Default options
+    const {
+      startThreshold = silenceThresholdDb,
+      stopThreshold = silenceThresholdDb,
+      startDuration = 0.05,  // 50ms minimum duration for silence at the start
+      stopDuration = 0.05,   // 50ms minimum duration for silence in the middle/end
+      detectionMethod = 'rms', // 'rms' is more aggressive than 'peak'
+      startPeriods = 1,       // Number of silence periods to remove from start
+      stopPeriods = -1        // -1 means all silence periods
+    } = options;
+    
+    console.log(`Removing silence with thresholds: start=${startThreshold}dB, stop=${stopThreshold}dB`);
+    console.log(`Silence durations: start=${startDuration}s, stop=${stopDuration}s, method=${detectionMethod}`);
+    
+    // Build ffmpeg command for silence removal
+    // More aggressive parameters based on real-world testing
+    const silenceFilter = (
+      `silenceremove=start_periods=${startPeriods}:start_duration=${startDuration}:` +
+      `start_threshold=${startThreshold}dB:detection=${detectionMethod},` +
+      `silenceremove=stop_periods=${stopPeriods}:stop_duration=${stopDuration}:` +
+      `stop_threshold=${stopThreshold}dB:detection=${detectionMethod}`
+    );
+    
+    const command = `ffmpeg -i "${inputFile}" -af "${silenceFilter}" -y "${outputFile}"`;
+    console.log(`Executing command: ${command}`);
+    
+    // Execute ffmpeg command
+    const { stdout, stderr } = await execAsync(command);
+    
+    // FFmpeg outputs to stderr even on success, so we need to check for specific error indicators
+    if (stderr) {
+      console.log(`FFmpeg output: ${stderr}`);
+      if (stderr.toLowerCase().includes('error') || stderr.toLowerCase().includes('invalid')) {
+        console.error(`FFmpeg silence removal error detected`);
+        return false;
+      }
+    }
+    
+    // Verify file exists and has content
+    const fileExists = fs.existsSync(outputFile);
+    if (fileExists) {
+      try {
+        const stats = fs.statSync(outputFile);
+        console.log(`Output file size: ${stats.size} bytes`);
+        
+        // Get and log the duration difference to verify silence was removed
+        const { stdout: originalDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputFile}"`);
+        const { stdout: newDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${outputFile}"`);
+        
+        const originalDuration = parseFloat(originalDurationStdout);
+        const newDuration = parseFloat(newDurationStdout);
+        const reductionPercent = ((originalDuration - newDuration) / originalDuration) * 100;
+        
+        console.log(`Silence removal stats: Original=${originalDuration.toFixed(2)}s, New=${newDuration.toFixed(2)}s, Reduction=${reductionPercent.toFixed(1)}%`);
+        
+        if (stats.size < 1000) {
+          console.warn('Output file is suspiciously small, might be corrupted');
+        }
+      } catch (err) {
+        console.error(`Error checking output file: ${err.message}`);
+      }
+    } else {
+      console.error('Output file was not created');
+    }
+    
+    return fileExists;
+  } catch (error) {
+    console.error(`Error in silence removal: ${error.message}`);
+    console.error(error.stack);
+    return false;
+  }
+}
+
+/**
  * Processes audio: removes silences and speeds up
  * @param {string} inputPath - Path to input audio file
  * @param {string} outputPath - Path to output audio file
@@ -129,18 +212,30 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           targetDuration: targetDuration
       });
 
-      // Define silence removal threshold and create the filter
-      const silence_threshold_db = -35;
-      const min_pause_duration = 0.2; // Remove pauses longer than 0.2 seconds
-      const silence_filter = (
-          `silenceremove=stop_periods=-1:stop_duration=${min_pause_duration}:stop_threshold=${silence_threshold_db}dB`
-      );
+      // Use the new improved silence removal method
+      const silenceRemovedTemp = outputPath + '.silence-removed.wav';
+      
+      // Adjust threshold parameters based on whether this is a hook or script
+      const silenceThresholdDb = isHook ? -35.0 : -37.0; // More aggressive for scripts
+      
+      // Use different settings for hooks vs. scripts
+      const silenceOptions = {
+        startThreshold: silenceThresholdDb,
+        stopThreshold: silenceThresholdDb,
+        startDuration: isHook ? 0.05 : 0.08,   // Longer minimum for scripts
+        stopDuration: isHook ? 0.05 : 0.08,
+        detectionMethod: 'rms',   // More aggressive than peak
+      };
+      
+      // Call the new removeSilence function
+      const silenceRemoved = await removeSilence(inputPath, silenceRemovedTemp, silenceThresholdDb, silenceOptions);
+      
+      if (!silenceRemoved) {
+          console.error('Silence removal failed, using original audio');
+          await fs.promises.copyFile(inputPath, silenceRemovedTemp);
+      }
       
       if (pitchUp) {
-          // First remove silences regardless of hook or script
-          const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-          await execAsync(`ffmpeg -i "${inputPath}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
-          
           // Get duration after silence removal
           const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
           const durationAfterSilence = parseFloat(silenceDurationStdout);
@@ -230,10 +325,6 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
       } else {
           // When pitch up is false, use atempo for speed change only
           let effectiveSpeedFactor = speedFactor;
-          
-          // If silences need to be removed, do that first
-          const silenceRemovedTemp = outputPath + '.silence-removed.wav';
-          await execAsync(`ffmpeg -i "${inputPath}" -af "${silence_filter}" -y "${silenceRemovedTemp}"`);
           
           // Get duration after silence removal
           const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
