@@ -1421,7 +1421,7 @@ app.post('/api/generate-video', async (req, res) => {
       openrouterApiKey,
       useUserSettings = true,
       has_background_music,
-      target_duration,
+      audio_speed,
       subtitle_size = 64,
       stroke_size = 8,
       background_video_type = 'gameplay',
@@ -1433,6 +1433,7 @@ app.post('/api/generate-video', async (req, res) => {
     console.log('useUserSettings:', useUserSettings);
     console.log('Channel font:', channelFont);
     console.log('Pitch up enabled:', pitch_up);
+    console.log('Audio speed:', audio_speed);
     console.log('Hook animation type:', hook_animation_type);
     console.log('Rendering with AWS Lambda enabled');
 
@@ -1549,11 +1550,10 @@ app.post('/api/generate-video', async (req, res) => {
     fs.writeFileSync(scriptAudioRawPath, Buffer.from(scriptAudioBuffer));
     console.log(`Raw script audio saved to: ${scriptAudioRawPath}`);
 
-    // Process hook audio with fixed speed (1.2x) and pitch_up if enabled
+    // Process hook audio with user-defined speed or default
     console.log('Processing hook audio...');
-    // For hook audio, we always use speed factor 1.2, regardless of pitch_up setting
-    const hookSpeedFactor = 1.2;
-    await processAudio(hookAudioRawPath, hookAudioProcessedPath, hookSpeedFactor, pitch_up, true);
+    const hookAudioSpeed = audio_speed || 1.3; // Default to 1.3x if not specified
+    await processAudio(hookAudioRawPath, hookAudioProcessedPath, hookAudioSpeed, pitch_up, true, hookAudioSpeed);
     
     // Clean up raw hook audio file since we have the processed version
     await cleanupFiles([hookAudioRawPath]);
@@ -1562,45 +1562,14 @@ app.post('/api/generate-video', async (req, res) => {
     const { stdout: hookDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${hookAudioProcessedPath}"`);
     const hookDurationInSeconds = parseFloat(hookDurationStdout);
 
-    // First remove silences from script audio without speed adjustment
-    const scriptSilenceRemovedPath = path.join(audioDir, `script-silence-removed-${timestamp}.mp3`);
-    filesToCleanup.push(scriptSilenceRemovedPath);
-    await processAudio(scriptAudioRawPath, scriptSilenceRemovedPath, 1.0, pitch_up, false);
+    // Process script audio with user-defined speed
+    console.log('Processing script audio...');
+    const scriptAudioSpeed = audio_speed || 1.3; // Default to 1.3x if not specified
+    console.log(`Processing script audio with speed factor: ${scriptAudioSpeed}x`);
+    await processAudio(scriptAudioRawPath, scriptAudioProcessedPath, scriptAudioSpeed, pitch_up, false, scriptAudioSpeed);
     
-    // Clean up raw script audio file since we have the silence-removed version
+    // Clean up raw script audio file since we have the processed version
     await cleanupFiles([scriptAudioRawPath]);
-
-    // Get script duration after silence removal but before speed adjustment
-    const { stdout: scriptDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${scriptSilenceRemovedPath}"`);
-    const scriptDurationAfterSilenceRemoval = parseFloat(scriptDurationStdout);
-
-    // Calculate required speed factor for script to meet target duration
-    let scriptSpeedFactor = 1.25; // Default speed factor
-    console.log('Debug - target_duration:', target_duration);
-    console.log('Debug - target_duration type:', typeof target_duration);
-    if (target_duration && target_duration > 0) {
-      console.log('Debug - Entered target duration block');
-      const targetScriptDuration = target_duration - hookDurationInSeconds;
-      console.log('Debug - targetScriptDuration:', targetScriptDuration);
-      if (targetScriptDuration > 0) {
-        scriptSpeedFactor = Math.max(0.8, Math.min(2.0, scriptDurationAfterSilenceRemoval / targetScriptDuration));
-        console.log(`Detailed timing breakdown:`);
-        console.log(`- Target total duration: ${target_duration}s`);
-        console.log(`- Hook duration: ${hookDurationInSeconds}s`);
-        console.log(`- Target script duration: ${targetScriptDuration}s`);
-        console.log(`- Raw script duration: ${scriptDurationAfterSilenceRemoval}s`);
-        console.log(`- Calculated speed factor: ${scriptSpeedFactor}x`);
-        console.log(`- Estimated final script duration: ${scriptDurationAfterSilenceRemoval / scriptSpeedFactor}s`);
-        console.log(`- Estimated total duration: ${hookDurationInSeconds + (scriptDurationAfterSilenceRemoval / scriptSpeedFactor)}s`);
-      }
-    }
-
-    // Process script audio with calculated speed factor
-    console.log(`Processing script audio with speed factor: ${scriptSpeedFactor}x`);
-    await processAudio(scriptSilenceRemovedPath, scriptAudioProcessedPath, scriptSpeedFactor, pitch_up, false, target_duration - hookDurationInSeconds);
-    
-    // Clean up silence-removed script audio file since we have the final processed version
-    await cleanupFiles([scriptSilenceRemovedPath]);
 
     // Send audio completion status
     const hookAudioUrl = `/audio/${path.basename(hookAudioProcessedPath)}`;
@@ -1987,7 +1956,7 @@ Your questions should sound like something a Gen-Z poster would write while rant
 • Wild school moments  
 • Unhinged logic or situations  
 • Stupid conflict that escalates  
-• Something that shouldn’t have worked but did  
+• Something that shouldn't have worked but did  
 • Getting caught, exposed, or set up in a dumb way
 
 Avoid serious topics like cheating, abuse, emotional trauma, or anything therapy-adjacent. You're aiming for **hilarious story setups**, not life lessons.
@@ -1995,12 +1964,12 @@ Avoid serious topics like cheating, abuse, emotional trauma, or anything therapy
 ---
 
 🚫 AVOID:
-• Generic phrasing like "What’s the most..." more than once per batch  
-• Repeating formats (especially “Have you ever…” or “What’s the dumbest…” over and over)  
-• Petty revenge unless it’s uniquely weird or stupid  
+• Generic phrasing like "What's the most..." more than once per batch  
+• Repeating formats (especially "Have you ever…" or "What's the dumbest…" over and over)  
+• Petty revenge unless it's uniquely weird or stupid  
 • Work, relationships, or deep family secrets  
 • Anything resembling a motivational quote  
-• The phrase “Here is a short, engaging Reddit-style question”
+• The phrase "Here is a short, engaging Reddit-style question"
 
 ---
 
@@ -2017,42 +1986,42 @@ Avoid serious topics like cheating, abuse, emotional trauma, or anything therapy
 🔁 REFERENCE: USE THIS EXACT TONE AND STRUCTURE FOR INSPIRATION:
 
 How did a Karen think you were plotting against her?  
-What’s the dumbest reason you’ve ever been kicked out of somewhere?  
-What’s the craziest thing you’ve ever been accused of?  
-What’s the funniest way you caught someone lying?  
-What’s the dumbest reason you’ve ever been punished?  
-What’s the funniest way a lie has ever backfired?  
-What’s the funniest misunderstanding you’ve ever had with your dad?  
-Teachers, what’s the smartest thing a student has ever done?  
-What’s the dumbest way you’ve gotten in trouble at school?  
-What’s the dumbest argument you’ve ever been dragged into?  
-What’s the funniest thing you’ve ever done with zero regrets?  
-What’s the dumbest argument someone refused to lose?  
-What’s the funniest way you’ve gotten revenge on a teacher?  
-What’s the funniest way you’ve ever been proven wrong?  
-What’s the dumbest thing you did that actually worked?  
-What’s the most ridiculous complaint someone has ever made about you?  
-What’s the craziest thing someone has done at your school?  
-What’s the funniest way you’ve ever felt bad for someone?  
-What’s the craziest thing you’ve ever been blamed for?  
+What's the dumbest reason you've ever been kicked out of somewhere?  
+What's the craziest thing you've ever been accused of?  
+What's the funniest way you caught someone lying?  
+What's the dumbest reason you've ever been punished?  
+What's the funniest way a lie has ever backfired?  
+What's the funniest misunderstanding you've ever had with your dad?  
+Teachers, what's the smartest thing a student has ever done?  
+What's the dumbest way you've gotten in trouble at school?  
+What's the dumbest argument you've ever been dragged into?  
+What's the funniest thing you've ever done with zero regrets?  
+What's the dumbest argument someone refused to lose?  
+What's the funniest way you've gotten revenge on a teacher?  
+What's the funniest way you've ever been proven wrong?  
+What's the dumbest thing you did that actually worked?  
+What's the most ridiculous complaint someone has ever made about you?  
+What's the craziest thing someone has done at your school?  
+What's the funniest way you've ever felt bad for someone?  
+What's the craziest thing you've ever been blamed for?  
 How did a Karen almost ruin your life?  
 Teachers, how did you get revenge on a student?  
-Teachers, what’s the most absurd reason a student ever claimed they failed?  
+Teachers, what's the most absurd reason a student ever claimed they failed?  
 How did you catch someone trying to ruin your life forever?  
-What’s the most desperate way someone tried to get out of trouble?  
-What’s the craziest thing your teacher has ever done?  
-Dads, what’s the funniest way your son has tried to bribe you?  
-What’s the dumbest thing you’ve done while half asleep?  
-What’s the funniest way you got revenge on your parents?  
-What’s a lie that changed your life forever?  
+What's the most desperate way someone tried to get out of trouble?  
+What's the craziest thing your teacher has ever done?  
+Dads, what's the funniest way your son has tried to bribe you?  
+What's the dumbest thing you've done while half asleep?  
+What's the funniest way you got revenge on your parents?  
+What's a lie that changed your life forever?  
 How did your sibling ruin your life forever?  
-What’s the dumbest way someone instantly lost an argument against you?  
-What’s the worst thing your parents have ever done to you?  
-What’s the most bizarre request you’ve received from a family member?  
-What’s the funniest way you’ve been unprepared for something?  
-What’s the funniest way someone tried to scam you?  
-What’s the craziest misunderstanding you’ve had with a Karen?  
-What’s the funniest way you’ve ever seen someone get instant karma?
+What's the dumbest way someone instantly lost an argument against you?  
+What's the worst thing your parents have ever done to you?  
+What's the most bizarre request you've received from a family member?  
+What's the funniest way you've been unprepared for something?  
+What's the funniest way someone tried to scam you?  
+What's the craziest misunderstanding you've had with a Karen?  
+What's the funniest way you've ever seen someone get instant karma?
 
 ---
 

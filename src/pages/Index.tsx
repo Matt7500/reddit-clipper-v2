@@ -109,7 +109,7 @@ const Index = () => {
     style: StyleOption;
     has_background_music: boolean;
     background_video_type: 'gameplay' | 'satisfying';
-    target_duration: number;
+    audio_speed: number;
     subtitle_size: number;
     stroke_size: number;
   }) => {

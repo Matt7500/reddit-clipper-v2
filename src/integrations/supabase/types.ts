@@ -21,10 +21,15 @@ export type Database = {
           user_id: string
           voice_id: string | null
           has_background_music: boolean | null
-          target_duration: number | null
+          audio_speed: number | null
           subtitle_size: number | null
           stroke_size: number | null
           background_video_type: string | null
+          nickname: string | null
+          style: string | null
+          hook_animation_type: string | null
+          pitch_up: boolean | null
+          background_music_volume: number | null
         }
         Insert: {
           created_at?: string
@@ -37,10 +42,15 @@ export type Database = {
           user_id: string
           voice_id?: string | null
           has_background_music?: boolean | null
-          target_duration?: number | null
+          audio_speed?: number | null
           subtitle_size?: number | null
           stroke_size?: number | null
           background_video_type?: string | null
+          nickname?: string | null
+          style?: string | null
+          hook_animation_type?: string | null
+          pitch_up?: boolean | null
+          background_music_volume?: number | null
         }
         Update: {
           created_at?: string
@@ -53,10 +63,15 @@ export type Database = {
           user_id?: string
           voice_id?: string | null
           has_background_music?: boolean | null
-          target_duration?: number | null
+          audio_speed?: number | null
           subtitle_size?: number | null
           stroke_size?: number | null
           background_video_type?: string | null
+          nickname?: string | null
+          style?: string | null
+          hook_animation_type?: string | null
+          pitch_up?: boolean | null
+          background_music_volume?: number | null
         }
         Relationships: []
       }

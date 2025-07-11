@@ -24,7 +24,7 @@ interface CreateProfileDialogProps {
     background_music_volume?: number;
     background_video_type: BackgroundVideoType;
     hook_animation_type: HookAnimationType;
-    target_duration: number;
+    audio_speed: number;
     subtitle_size: number;
     stroke_size: number;
     pitch_up: boolean;
@@ -56,17 +56,15 @@ export const CreateProfileDialog = ({
   const [newProfileHookAnimationType, setNewProfileHookAnimationType] = useState<HookAnimationType>('fall');
   const [newProfileBackgroundMusic, setNewProfileBackgroundMusic] = useState(false);
   const [newProfileBackgroundMusicVolume, setNewProfileBackgroundMusicVolume] = useState<number>(0.015);
-  const [newProfileTargetDuration, setNewProfileTargetDuration] = useState<number>(60);
+  const [newProfileAudioSpeed, setNewProfileAudioSpeed] = useState<number>(1.3);
   const [newProfileSubtitleSize, setNewProfileSubtitleSize] = useState<number>(64);
   const [newProfileStrokeSize, setNewProfileStrokeSize] = useState<number>(8);
   const [newProfilePitchUp, setNewProfilePitchUp] = useState(false);
   const [subtitleSizeInput, setSubtitleSizeInput] = useState<string>("64");
   const [strokeSizeInput, setStrokeSizeInput] = useState<string>("8");
-  const [targetDurationInput, setTargetDurationInput] = useState<string>("60");
   const [invalidInputs, setInvalidInputs] = useState<{[key: string]: boolean}>({
     subtitleSize: false,
-    strokeSize: false,
-    targetDuration: false
+    strokeSize: false
   });
 
   useEffect(() => {
@@ -80,17 +78,15 @@ export const CreateProfileDialog = ({
       setNewProfileHookAnimationType('fall');
       setNewProfileBackgroundMusic(false);
       setNewProfileBackgroundMusicVolume(0.015);
-      setNewProfileTargetDuration(60);
+      setNewProfileAudioSpeed(1.3);
       setNewProfileSubtitleSize(64);
       setNewProfileStrokeSize(8);
       setNewProfilePitchUp(false);
       setSubtitleSizeInput("64");
       setStrokeSizeInput("8");
-      setTargetDurationInput("60");
       setInvalidInputs({
         subtitleSize: false,
-        strokeSize: false,
-        targetDuration: false
+        strokeSize: false
       });
       setActiveTab("basic");
     }
@@ -112,7 +108,7 @@ export const CreateProfileDialog = ({
       hook_animation_type: newProfileHookAnimationType,
       has_background_music: newProfileBackgroundMusic,
       background_music_volume: newProfileBackgroundMusicVolume,
-      target_duration: newProfileTargetDuration,
+      audio_speed: newProfileAudioSpeed,
       subtitle_size: newProfileSubtitleSize,
       stroke_size: newProfileStrokeSize,
       pitch_up: newProfilePitchUp,
@@ -128,13 +124,12 @@ export const CreateProfileDialog = ({
     setNewProfileHookAnimationType('fall');
     setNewProfileBackgroundMusic(false);
     setNewProfileBackgroundMusicVolume(0.015);
-    setNewProfileTargetDuration(60);
+    setNewProfileAudioSpeed(1.3);
     setNewProfileSubtitleSize(64);
     setNewProfileStrokeSize(8);
     setNewProfilePitchUp(false);
     setSubtitleSizeInput("64");
     setStrokeSizeInput("8");
-    setTargetDurationInput("60");
   };
 
   const allFonts = [...defaultFonts, ...customFonts];
@@ -231,35 +226,27 @@ export const CreateProfileDialog = ({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Target Duration (seconds)</label>
-                  <Input 
-                    type="text"
-                    placeholder="Enter target video duration"
-                    value={targetDurationInput}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setTargetDurationInput(e.target.value);
-                      // Mark as invalid if not a number
-                      setInvalidInputs({
-                        ...invalidInputs,
-                        targetDuration: isNaN(Number(e.target.value))
-                      });
-                    }}
-                    onBlur={() => {
-                      // Convert to number and apply constraints when focus is lost
-                      const parsed = parseInt(targetDurationInput);
-                      const newDuration = isNaN(parsed) ? 60 : Math.max(0, Math.min(600, parsed));
-                      setTargetDurationInput(newDuration.toString());
-                      setNewProfileTargetDuration(newDuration);
-                      setInvalidInputs({
-                        ...invalidInputs,
-                        targetDuration: false
-                      });
-                    }}
-                    className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.targetDuration ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                  />
-                  {invalidInputs.targetDuration && (
-                    <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
-                  )}
+                  <label className="text-sm text-muted-foreground">Audio Speed</label>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Slower</span>
+                      <span className="text-sm text-white font-medium">{newProfileAudioSpeed.toFixed(1)}x</span>
+                      <span className="text-xs text-muted-foreground">Faster</span>
+                    </div>
+                    <Slider 
+                      value={[newProfileAudioSpeed]}
+                      min={1.0}
+                      max={2.0}
+                      step={0.1}
+                      onValueChange={(value) => {
+                        setNewProfileAudioSpeed(value[0]);
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground text-center">
+                      Adjusts the speed of both intro and main audio
+                    </p>
+                  </div>
                 </div>
               </div>
             </TabsContent>

@@ -40,11 +40,9 @@ export const EditProfileDialog = ({
   const allFonts = [...defaultFonts, ...customFonts];
   const [subtitleSizeInput, setSubtitleSizeInput] = useState<string>("");
   const [strokeSizeInput, setStrokeSizeInput] = useState<string>("");
-  const [targetDurationInput, setTargetDurationInput] = useState<string>("");
   const [invalidInputs, setInvalidInputs] = useState<{[key: string]: boolean}>({
     subtitleSize: false,
-    strokeSize: false,
-    targetDuration: false
+    strokeSize: false
   });
 
   // Only reset active tab when dialog first opens
@@ -68,10 +66,10 @@ export const EditProfileDialog = ({
         });
       }
 
-      if (editingProfile && (editingProfile.target_duration === undefined || editingProfile.target_duration === null)) {
+      if (editingProfile && (editingProfile.audio_speed === undefined || editingProfile.audio_speed === null)) {
         onEditingProfileChange({
           ...editingProfile,
-          target_duration: 60
+          audio_speed: 1.3
         });
       }
     }
@@ -82,7 +80,6 @@ export const EditProfileDialog = ({
     if (editingProfile) {
       setSubtitleSizeInput(editingProfile.subtitle_size?.toString() || "64");
       setStrokeSizeInput(editingProfile.stroke_size?.toString() || "8");
-      setTargetDurationInput(editingProfile.target_duration?.toString() || "60");
     }
   }, [editingProfile?.id]);
 
@@ -190,38 +187,30 @@ export const EditProfileDialog = ({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-muted-foreground">Target Duration (seconds)</label>
-                  <Input 
-                    type="text"
-                    placeholder="Enter target video duration"
-                    value={targetDurationInput}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setTargetDurationInput(e.target.value);
-                      // Mark as invalid if not a number
-                      setInvalidInputs({
-                        ...invalidInputs,
-                        targetDuration: isNaN(Number(e.target.value))
-                      });
-                    }}
-                    onBlur={() => {
-                      // Convert to number and apply constraints when focus is lost
-                      const parsed = parseInt(targetDurationInput);
-                      const newDuration = isNaN(parsed) ? 60 : Math.max(0, Math.min(600, parsed));
-                      setTargetDurationInput(newDuration.toString());
-                      onEditingProfileChange({
-                        ...editingProfile,
-                        target_duration: newDuration
-                      });
-                      setInvalidInputs({
-                        ...invalidInputs,
-                        targetDuration: false
-                      });
-                    }}
-                    className={`bg-[#2A2A2A] border-[#3A3A3A] ${invalidInputs.targetDuration ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                  />
-                  {invalidInputs.targetDuration && (
-                    <p className="text-red-500 text-xs mt-1">Please enter a valid number</p>
-                  )}
+                  <label className="text-sm text-muted-foreground">Audio Speed</label>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Slower</span>
+                      <span className="text-sm text-white font-medium">{(editingProfile.audio_speed || 1.3).toFixed(1)}x</span>
+                      <span className="text-xs text-muted-foreground">Faster</span>
+                    </div>
+                    <Slider 
+                      value={[editingProfile.audio_speed || 1.3]}
+                      min={1.0}
+                      max={2.0}
+                      step={0.1}
+                      onValueChange={(value) => {
+                        onEditingProfileChange({ 
+                          ...editingProfile, 
+                          audio_speed: value[0] 
+                        });
+                      }}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground text-center">
+                      Adjusts the speed of both intro and main audio
+                    </p>
+                  </div>
                 </div>
               </div>
             </TabsContent>

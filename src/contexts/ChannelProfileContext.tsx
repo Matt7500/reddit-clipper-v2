@@ -145,6 +145,7 @@ export const ChannelProfileProvider = ({ children }: { children: React.ReactNode
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         background_video_type: profile.background_video_type || 'gameplay',
+        audio_speed: profile.audio_speed || 1.3,
       };
 
       const updatedProfiles = [...profiles, newProfile];
@@ -189,6 +190,7 @@ export const ChannelProfileProvider = ({ children }: { children: React.ReactNode
               ...profile, 
               ...updates, 
               background_video_type: updates.background_video_type || profile.background_video_type || 'gameplay',
+              audio_speed: updates.audio_speed !== undefined ? updates.audio_speed : (profile.audio_speed || 1.3),
               updated_at: new Date().toISOString() 
             }
           : profile

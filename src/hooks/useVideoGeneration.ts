@@ -494,7 +494,7 @@ export function useVideoGeneration() {
         openrouterApiKey: settings.openrouterApiKey,
         openrouterModel: settings.openrouterModel,
         useUserSettings: true,
-        target_duration: channel.target_duration,
+        audio_speed: channel.audio_speed || 1.3,
         subtitle_size: channel.subtitle_size || 64,
         stroke_size: channel.stroke_size || 8,
         has_background_music: channel.has_background_music || false,

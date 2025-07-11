@@ -187,17 +187,17 @@ export async function removeSilence(inputFile, outputFile, silenceThresholdDb = 
  * @param {number} speedFactor - Speed factor (default: 1.3)
  * @param {boolean} pitchUp - Whether to pitch up the audio
  * @param {boolean} isHook - Whether the audio is a hook
- * @param {number|null} targetDuration - Target duration in seconds
+ * @param {number|null} audioSpeed - Audio speed factor (1.0 to 2.0)
  * @returns {Promise<void>}
  */
-export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pitchUp = false, isHook = true, targetDuration = null) {
+export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pitchUp = false, isHook = true, audioSpeed = null) {
   console.log('Processing audio with parameters:', {
       inputPath,
       outputPath,
       speedFactor,
       pitchUp,
       isHook,
-      targetDuration
+      audioSpeed
   });
 
   // Get the base sample rate and duration of the input audio directly
@@ -209,7 +209,7 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
       console.log(`Original audio stats:`, {
           sampleRate: baseRate,
           duration: currentDuration,
-          targetDuration: targetDuration
+          audioSpeed: audioSpeed
       });
 
       // Use the new improved silence removal method
@@ -243,7 +243,11 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           // PREMIERE PRO STYLE: Speed and pitch change together
           // In Premiere Pro, when you increase speed to 130%, the pitch also increases by 30%
           
-          if (isHook) {
+          // Use audioSpeed if provided, otherwise use default behavior
+          if (audioSpeed && audioSpeed > 0) {
+              speedFactor = audioSpeed;
+              console.log(`Using user-defined audio speed: ${speedFactor}x`);
+          } else if (isHook) {
               // For hooks: fixed 1.3x speed and pitch increase
               // Need to compensate for the slight deviation in speed ratio to achieve exactly 1.3x
               const targetSpeedRatio = 1.3;
@@ -277,19 +281,6 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
               });
               
               return;
-          } else if (targetDuration && targetDuration > 0) {
-              // Calculate speed factor to reach target duration
-              speedFactor = durationAfterSilence / targetDuration;
-              
-              // Limit speed factor to reasonable range for intelligibility
-              speedFactor = Math.max(0.8, Math.min(2.0, speedFactor));
-              
-              console.log(`Using Premiere Pro style speed+pitch increase: ${speedFactor.toFixed(2)}x`);
-          } else if (!isHook) {
-              // For scripts without target duration, don't apply any speed/pitch change
-              // This prevents double-processing when scripts are processed in two passes
-              speedFactor = 1.0;
-              console.log(`Using neutral 1.0x speed/pitch for script (no change)`);
           } else {
               // Default for other cases
               speedFactor = 1.3;
@@ -318,9 +309,9 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           const finalDuration = parseFloat(finalDurationStdout);
           
           console.log('Final audio duration:', {
-              targetDuration: targetDuration,
+              originalDuration: durationAfterSilence,
               actualDuration: finalDuration,
-              difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
+              speedRatio: durationAfterSilence / finalDuration
           });
       } else {
           // When pitch up is false, use atempo for speed change only
@@ -330,15 +321,10 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           const { stdout: silenceDurationStdout } = await execAsync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${silenceRemovedTemp}"`);
           const durationAfterSilence = parseFloat(silenceDurationStdout);
           
-          // If target duration is specified, calculate required speed factor
-          if (targetDuration) {
-              // Calculate total speed factor needed to reach target duration
-              effectiveSpeedFactor = durationAfterSilence / targetDuration;
-              
-              // Ensure speed factor is within reasonable limits
-              effectiveSpeedFactor = Math.max(0.8, Math.min(2.0, effectiveSpeedFactor));
-              
-              console.log(`Calculated speed factor to match target duration: ${effectiveSpeedFactor}`);
+          // Use audioSpeed if provided
+          if (audioSpeed && audioSpeed > 0) {
+              effectiveSpeedFactor = audioSpeed;
+              console.log(`Using user-defined audio speed: ${effectiveSpeedFactor}x`);
           }
           
           // For normal speed changing, use high quality ATEMPO
@@ -367,9 +353,9 @@ export async function processAudio(inputPath, outputPath, speedFactor = 1.3, pit
           const finalDuration = parseFloat(finalDurationStdout);
           
           console.log('Final audio duration:', {
-              targetDuration: targetDuration,
+              originalDuration: durationAfterSilence,
               actualDuration: finalDuration,
-              difference: targetDuration ? Math.abs(finalDuration - targetDuration) : 0
+              speedRatio: durationAfterSilence / finalDuration
           });
       }
   } catch (error) {
